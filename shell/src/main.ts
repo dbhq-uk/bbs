@@ -14,7 +14,7 @@ import {
 import { loadConference } from "./board/conference";
 import { fetchImage, openUrl, type WebResult } from "./board/web";
 import { CONFERENCES } from "./conferences";
-import { openSession, type Meter } from "./gw";
+import { haveSession, openSession, type Meter } from "./gw";
 import { loginArt, menuArt, type Art } from "./board/art";
 import { meterLine } from "./board/screens";
 
@@ -58,7 +58,7 @@ async function openTurnstileSession(): Promise<void> {
   // The api.js tag is async defer, so `turnstile` can exist as a partial
   // object before `render` is attached. Calling it early throws
   // "t.render is not a function" and the session is never opened.
-  const ts = await waitForTurnstile();
+  const ts = await loadTurnstile();
   if (!ts) {
     // Turnstile did not initialise - blocked, offline, or an automation
     // browser. Try the exchange anyway and let the Worker's secret decide.
@@ -69,7 +69,7 @@ async function openTurnstileSession(): Promise<void> {
     // secret, which rejects any token that did not come from a solved
     // challenge, so this path just reports the gateway offline.
     try {
-      await openSession("no-turnstile");
+      await openSession("");
       status = "";
     } catch {
       status = "GATEWAY OFFLINE - CONFERENCES ONLY";
@@ -78,7 +78,7 @@ async function openTurnstileSession(): Promise<void> {
   }
 
   return new Promise((resolve) => {
-    ts.render("#turnstile", {
+    const id = ts.render("#turnstile", {
       sitekey: key,
       callback: async (token: string) => {
         try {
@@ -96,19 +96,73 @@ async function openTurnstileSession(): Promise<void> {
         resolve();
       },
     });
+
+    // An invisible widget does not always run on render alone. Asking it
+    // to execute is harmless when it has already started.
+    try {
+      (ts as any).execute?.(id);
+    } catch {
+      // Already executing, which is fine.
+    }
+
+    // Never hang the board on a challenge that will not resolve.
+    setTimeout(() => {
+      if (!haveSession()) {
+        status = "GATEWAY OFFLINE - CONFERENCES ONLY";
+        redraw();
+      }
+      resolve();
+    }, 15000);
   });
 }
 
-/// Polls until the Turnstile API is genuinely usable, or gives up. There is
-/// an onload query parameter for this, but polling keeps the readiness
-/// check next to the code that depends on it.
-function waitForTurnstile(timeoutMs = 8000): Promise<{ render: Function } | null> {
+/// Loads Turnstile from here, rather than from a tag in the HTML.
+///
+/// A tag in the HTML is a race we lose. api.js is async and this module is
+/// deferred, so api.js ran first, looked for its onload callback before
+/// this module had installed one, and logged "Unable to find onload
+/// callback ... got undefined". An inline script would fix the ordering
+/// but the CSP forbids inline script and adding 'unsafe-inline' to buy a
+/// convenience is a bad trade.
+///
+/// Injecting the tag from here removes the race entirely: the callback is
+/// installed first, by construction, because this code installs it before
+/// it creates the element.
+function loadTurnstile(timeoutMs = 12000): Promise<{ render: Function } | null> {
   return new Promise((resolve) => {
+    let done = false;
+    const finish = (v: { render: Function } | null) => {
+      if (done) return;
+      done = true;
+      resolve(v);
+    };
+    const ready = () => {
+      const ts = (globalThis as Record<string, any>).turnstile;
+      return ts && typeof ts.render === "function" ? ts : null;
+    };
+
+    // Already there, if the module ran after a cached load.
+    const now = ready();
+    if (now) return finish(now);
+
+    (globalThis as Record<string, any>).onloadTurnstileCallback = () => finish(ready());
+
+    const el = document.createElement("script");
+    el.src =
+      "https://challenges.cloudflare.com/turnstile/v0/api.js" +
+      "?render=explicit&onload=onloadTurnstileCallback";
+    el.async = true;
+    el.onerror = () => finish(null);
+    document.head.appendChild(el);
+
+    // Belt and braces: if the callback never fires but the API appears
+    // anyway, take it.
     const started = Date.now();
     const tick = () => {
-      const ts = (globalThis as Record<string, any>).turnstile;
-      if (ts && typeof ts.render === "function") return resolve(ts);
-      if (Date.now() - started > timeoutMs) return resolve(null);
+      if (done) return;
+      const ts = ready();
+      if (ts) return finish(ts);
+      if (Date.now() - started > timeoutMs) return finish(null);
       setTimeout(tick, 100);
     };
     tick();

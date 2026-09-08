@@ -13,24 +13,44 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   if (!guard.ok) return json({ error: guard.reason }, 403);
 
   const body = (await request.json().catch(() => null)) as { token?: string } | null;
-  if (!body?.token) return json({ error: "no turnstile token" }, 400);
-
   const ip = request.headers.get("cf-connecting-ip") ?? "0.0.0.0";
-  const form = new FormData();
-  form.append("secret", env.TURNSTILE_SECRET);
-  form.append("response", body.token);
-  form.append("remoteip", ip);
 
-  const verify = await fetch(
-    "https://challenges.cloudflare.com/turnstile/v0/siteverify",
-    { method: "POST", body: form },
-  );
-  const outcome = (await verify.json()) as { success: boolean };
-  if (!outcome.success) return json({ error: "challenge failed" }, 403);
+  // A solved challenge is worth a full session. Anything else is worth a
+  // GUEST session with a much smaller allowance.
+  //
+  // Turnstile was spec 1's stopgap to stop anonymous relay abuse, and it
+  // is fragile: it does not initialise at all in some browsers, and when
+  // it fails there is nothing the caller can do about it. Refusing them
+  // outright makes the board useless for a problem that is not theirs.
+  //
+  // Refusing is also the wrong shape. Spec 2 replaces this idea with a
+  // real guest tier, and the relay is already bounded independently of who
+  // is calling: GET only, byte caps, content-type allowlist, no private
+  // addresses, and per-IP, per-target and global rate limits. A guest
+  // session does not open anything those do not already contain.
+  let verified = false;
+  if (body?.token) {
+    const form = new FormData();
+    form.append("secret", env.TURNSTILE_SECRET);
+    form.append("response", body.token);
+    form.append("remoteip", ip);
+    try {
+      const verify = await fetch(
+        "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+        { method: "POST", body: form },
+      );
+      verified = ((await verify.json()) as { success: boolean }).success === true;
+    } catch {
+      verified = false;
+    }
+  }
 
   return json({
     session: await mintSession(env.SESSION_SECRET),
-    allowance: ALLOWANCE,
+    allowance: verified
+      ? ALLOWANCE
+      : { ...ALLOWANCE, requestsPerSession: 40, requestsPerMinute: 10 },
+    tier: verified ? "verified" : "guest",
   });
 };
 
