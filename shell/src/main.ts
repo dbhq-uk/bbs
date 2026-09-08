@@ -1,12 +1,12 @@
-import init, { font_bytes, render_document, render_image, render_lines, version }
+import init, { font_bytes, render_art, render_document, render_image, render_lines, version }
   from "bbs-core";
 import { Terminal, COLS, ROWS, type Screen } from "./terminal";
 import { onKey } from "./keyboard";
 import { nextState, type State } from "./board/state";
 import {
   conferenceScreen,
-  loginScreen,
-  menuScreen,
+
+
   webScreen,
   NO_DOCUMENT,
   type Item,
@@ -15,6 +15,8 @@ import { loadConference } from "./board/conference";
 import { fetchImage, openUrl, type WebResult } from "./board/web";
 import { CONFERENCES } from "./conferences";
 import { openSession, type Meter } from "./gw";
+import { loginArt, menuArt, type Art } from "./board/art";
+import { meterLine } from "./board/screens";
 
 let term: Terminal;
 let state: State = { screen: "login" };
@@ -202,9 +204,9 @@ function redraw() {
   const s = state;
   switch (s.screen) {
     case "login":
-      return paint(loginScreen(meter, status));
+      return art(loginArt(meter ? meterLine(meter) : "", status));
     case "menu":
-      return paint(menuScreen(meter, status));
+      return art(menuArt(CONFERENCES, meter ? meterLine(meter) : "", status, input));
     case "web":
       return paint(webScreen(input, status, meter));
     case "conference": {
@@ -219,6 +221,11 @@ function redraw() {
       return term.draw(screen);
     }
   }
+}
+
+/// Paints a coloured art screen. The core does the CP437 folding.
+function art(a: Art) {
+  term.draw(render_art(a.lines, a.fg, a.bg, COLS, ROWS) as Screen);
 }
 
 /// Paints plain lines. The core does the CP437 folding so the shell never

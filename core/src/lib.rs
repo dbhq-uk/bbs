@@ -156,3 +156,36 @@ pub fn render_lines(
     }
     serde_wasm_bindgen::to_value(&s).map_err(|e| JsValue::from_str(&e.to_string()))
 }
+
+/// Renders ANSI art: one line of text plus one line of per-column colour.
+///
+/// The colour rows are strings of hex digits, one per column, so a screen
+/// and its colouring stay legible side by side in the source rather than
+/// living in a table of coordinates nobody can read.
+#[wasm_bindgen]
+pub fn render_art(
+    lines: Vec<String>,
+    fg_rows: Vec<String>,
+    bg_rows: Vec<String>,
+    cols: u16,
+    rows: u16,
+) -> Result<JsValue, JsValue> {
+    let mut s = screen::Screen::new(cols, rows);
+    for (y, line) in lines.iter().take(rows as usize).enumerate() {
+        let bytes = layout::to_cp437(line);
+        let fg_row: Vec<u8> = fg_rows.get(y).map(|r| hexes(r)).unwrap_or_default();
+        let bg_row: Vec<u8> = bg_rows.get(y).map(|r| hexes(r)).unwrap_or_default();
+        for (x, &ch) in bytes.iter().take(cols as usize).enumerate() {
+            let fg = screen::Colour::from_index(fg_row.get(x).copied().unwrap_or(7));
+            let bg = screen::Colour::from_index(bg_row.get(x).copied().unwrap_or(0));
+            s.set(x as u16, y as u16, screen::Cell { ch, fg, bg });
+        }
+    }
+    serde_wasm_bindgen::to_value(&s).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+fn hexes(s: &str) -> Vec<u8> {
+    s.chars()
+        .map(|c| c.to_digit(16).unwrap_or(7) as u8)
+        .collect()
+}
