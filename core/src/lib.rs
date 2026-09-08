@@ -7,6 +7,7 @@
 use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
+pub mod access;
 pub mod ansi;
 pub mod chrome;
 pub mod colour;
@@ -23,6 +24,17 @@ pub mod screen;
 #[wasm_bindgen]
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// Authorisation, exported so the shell filters menus with the same rule
+/// the server authorises with. Two implementations of one rule is how a
+/// menu ends up offering something the server then refuses.
+#[wasm_bindgen]
+pub fn may_access(sl: u16, flags: &str, need_sl: u16, need_flags: &str) -> bool {
+    access::may(
+        &access::Caller::new(sl, flags),
+        &access::Requirement::new(need_sl, need_flags),
+    )
 }
 
 /// The shell builds its glyph atlas from these exact bytes, so what the

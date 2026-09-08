@@ -5,6 +5,11 @@ pages_build_output_dir = "shell/dist"
 # Replace with the real id printed by `wrangler kv namespace create QUOTA`.
 # A placeholder here deploys a Worker whose KV writes fail silently, so the
 # session allowance never decrements and the metering banner lies.
+[[d1_databases]]
+binding = "DB"
+database_name = "bbs"
+database_id = "1f201cdb-eb83-4e4f-9186-a6ab335feb40"
+
 [[kv_namespaces]]
 binding = "QUOTA"
 id = "700825175cd149b09ac512fc79dc6fff"

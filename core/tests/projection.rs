@@ -339,14 +339,31 @@ fn a_list_of_cards_is_descended_into_not_flattened_to_text() {
         )],
     );
     let d = project(&doc);
-    assert!(!d.blocks.iter().any(|b| matches!(b, Block::List { .. })),
-        "a card grid must not be flattened into a text list");
+    assert!(
+        !d.blocks.iter().any(|b| matches!(b, Block::List { .. })),
+        "a card grid must not be flattened into a text list"
+    );
     assert_eq!(
-        d.blocks.iter().filter(|b| matches!(b, Block::Link { .. })).count(), 2);
+        d.blocks
+            .iter()
+            .filter(|b| matches!(b, Block::Link { .. }))
+            .count(),
+        2
+    );
     assert_eq!(
-        d.blocks.iter().filter(|b| matches!(b, Block::Image { .. })).count(), 1);
+        d.blocks
+            .iter()
+            .filter(|b| matches!(b, Block::Image { .. }))
+            .count(),
+        1
+    );
     assert_eq!(
-        d.blocks.iter().filter(|b| matches!(b, Block::Heading { .. })).count(), 2);
+        d.blocks
+            .iter()
+            .filter(|b| matches!(b, Block::Heading { .. }))
+            .count(),
+        2
+    );
 }
 
 #[test]
@@ -366,6 +383,9 @@ fn a_list_of_plain_text_is_still_flattened() {
     let d = project(&doc);
     assert_eq!(
         d.blocks[0],
-        Block::List { items: vec!["Milk".into(), "Eggs".into()], ordered: false }
+        Block::List {
+            items: vec!["Milk".into(), "Eggs".into()],
+            ordered: false
+        }
     );
 }
