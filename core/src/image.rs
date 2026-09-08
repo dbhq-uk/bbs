@@ -37,16 +37,14 @@ const SAMPLES: usize = (CELL_W * CELL_H) as usize;
 /// The tonal term is what the eye sees at viewing distance and is what lets
 /// a shade glyph beat a solid block on an off-palette colour. The native
 /// term stops a numerically excellent mixture winning when its individual
-/// dots would be visible, and preserves genuine one-pixel detail. 0.9/0.1
-/// is the starting point Codex recommended; lower the native weight if
-/// shades are too timid, raise it if the output buzzes.
-/// Split between the filtered (tonal) and native (structural) terms.
+/// dots would be visible, and preserves genuine one-pixel detail.
+///
+/// Swept empirically on a portrait: 0.9 makes shape almost irrelevant, so
+/// glyphs get picked for their coverage fraction and the output is
+/// scratchy; 0.15 collapses smooth regions to solid blocks. 0.5 is the
+/// balance, and it stopped mattering much once local contrast was added,
+/// which is the real fix for detail.
 const W_TONAL: f32 = 0.5;
-    std::env::var("WT")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(0.9)
-});
 const W_NATIVE: f32 = 1.0 - W_TONAL;
 
 #[derive(Debug, Clone, Copy)]
@@ -131,7 +129,6 @@ pub fn quantise(rgba: &[u8], w: u32, h: u32, cols: u16, max_rows: u16) -> Screen
 struct Tables {
     /// Every glyph's bitmap as a 128-bit mask, and how many bits it sets.
     glyphs: Vec<(u8, u128, u32)>,
-    pal_lin: [(f32, f32, f32); 16],
     pal_lab: [Lab; 16],
     /// Oklab of every (fg, bg, coverage) blend. Coverage is a count of set
     /// pixels, 0..=128, so this is exact rather than interpolated.
@@ -187,7 +184,6 @@ impl Tables {
 
         Tables {
             glyphs,
-            pal_lin,
             pal_lab,
             blend,
         }
@@ -381,12 +377,12 @@ fn local_contrast(rgba: &[u8], w: u32, h: u32, amount: f32) -> Vec<u8> {
     let n = (w * h) as usize;
     // Luminance in linear light.
     let mut lum = vec![0.0f32; n];
-    for i in 0..n {
+    for (i, l) in lum.iter_mut().enumerate() {
         let j = i * 4;
         if j + 2 >= rgba.len() {
             break;
         }
-        lum[i] = 0.2126 * srgb_to_linear(rgba[j])
+        *l = 0.2126 * srgb_to_linear(rgba[j])
             + 0.7152 * srgb_to_linear(rgba[j + 1])
             + 0.0722 * srgb_to_linear(rgba[j + 2]);
     }
