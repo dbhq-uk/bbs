@@ -23,7 +23,10 @@ fn the_full_pipeline_produces_pages_from_a_raw_tree() {
     assert!(!stats.looks_like_empty_shell);
     assert_eq!(
         doc.blocks[0],
-        Block::Heading { level: 1, text: "Hello".into() }
+        Block::Heading {
+            level: 1,
+            text: "Hello".into()
+        }
     );
     let pages = bbs_core::layout::render(&doc, 80, 25);
     assert!(!pages.is_empty());

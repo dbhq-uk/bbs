@@ -197,3 +197,87 @@ fn a_page_with_neither_prose_nor_links_is_an_empty_shell() {
     let (_, stats) = reject(d);
     assert!(stats.looks_like_empty_shell);
 }
+
+#[test]
+fn a_long_link_run_before_any_prose_is_navigation() {
+    // Wikipedia opens with about twenty links to other-language versions.
+    // There is no earlier run to compare them against, so run-matching
+    // never removed them and page one of every article was a language
+    // picker.
+    let mut blocks: Vec<Block> = (1..=20)
+        .map(|i| link(&format!("Lang {i}"), &format!("/lang/{i}"), i))
+        .collect();
+    blocks.push(para(
+        "The actual article text, which is long enough to clear the prose floor \
+         and therefore proves the leading navigation was dropped rather than the \
+         whole document being treated as a link index of some kind.",
+    ));
+    let (out, _) = reject(SemanticDoc {
+        title: "T".into(),
+        blocks,
+    });
+
+    assert_eq!(
+        out.blocks
+            .iter()
+            .filter(|b| matches!(b, Block::Link { .. }))
+            .count(),
+        0,
+        "the leading language list should be gone"
+    );
+    assert!(out
+        .blocks
+        .iter()
+        .any(|b| matches!(b, Block::Paragraph { .. })));
+}
+
+#[test]
+fn a_pure_link_index_keeps_its_links() {
+    // No prose at all means the links ARE the content - a site map or a
+    // board list. Dropping them would leave an empty screen.
+    let blocks: Vec<Block> = (1..=20)
+        .map(|i| link(&format!("Article {i}"), &format!("/a/{i}"), i))
+        .collect();
+    let (out, _) = reject(SemanticDoc {
+        title: "T".into(),
+        blocks,
+    });
+    assert_eq!(
+        out.blocks
+            .iter()
+            .filter(|b| matches!(b, Block::Link { .. }))
+            .count(),
+        20
+    );
+}
+
+#[test]
+fn links_cp437_cannot_render_are_dropped_not_shown_as_question_marks() {
+    let d = SemanticDoc {
+        title: "T".into(),
+        blocks: vec![
+            link(
+                "\u{627}\u{644}\u{639}\u{631}\u{628}\u{64a}\u{629}",
+                "/ar",
+                1,
+            ),
+            link("\u{65e5}\u{672c}\u{8a9e}", "/ja", 2),
+            link("Deutsch", "/de", 3),
+            link("Fran\u{e7}ais", "/fr", 4),
+        ],
+    };
+    let (out, stats) = reject(d);
+    let texts: Vec<String> = out
+        .blocks
+        .iter()
+        .filter_map(|b| match b {
+            Block::Link { text, .. } => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        texts,
+        vec!["Deutsch".to_string(), "Fran\u{e7}ais".to_string()]
+    );
+    assert_eq!(stats.unrenderable_removed, 2);
+}

@@ -24,11 +24,7 @@ pub fn to_cp437(s: &str) -> Vec<u8> {
             // maths - is the exact inverse of the table ansi.rs uses to
             // print a screen, so derive it from there rather than
             // maintaining a second list that can drift.
-            c => out.push(
-                latin1_to_cp437(c)
-                    .or_else(|| high_cp437(c))
-                    .unwrap_or(b'?'),
-            ),
+            c => out.push(latin1_to_cp437(c).or_else(|| high_cp437(c)).unwrap_or(b'?')),
         }
     }
     out
