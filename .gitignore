@@ -10,3 +10,15 @@ test-results/
 playwright-report/
 package-lock.json
 .dev.vars
+
+# Terraform. Neither the provider cache nor state belongs in git: .terraform
+# is machine-local, and state stores resource attributes verbatim, including
+# values that were never meant to be read. That is precisely why the state
+# lives in R2 rather than in a repository, private or otherwise.
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
