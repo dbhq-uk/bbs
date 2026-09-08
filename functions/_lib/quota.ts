@@ -82,11 +82,38 @@ export type QuotaEnv = {
   /// KV is read-modify-write, so under a burst many requests read the same
   /// counter and overwrite each other, and the per-client rate limit is
   /// simply bypassed. Anything that is a security boundary uses these.
-  RL_SESSION: RateLimit;
-  RL_IP: RateLimit;
-  RL_TARGET: RateLimit;
-  RL_GLOBAL: RateLimit;
+  /// Optional, and absent in production today.
+  ///
+  /// Cloudflare Pages rejects `unsafe` bindings, which is the only way to
+  /// declare a ratelimit binding, so a Pages deploy cannot have them. When
+  /// they are missing the limiter falls back to KV counters, which are
+  /// read-modify-write and therefore approximate under a burst - exactly
+  /// the weakness these bindings exist to fix. Migrating this project from
+  /// Pages to a Worker with static assets restores them.
+  RL_SESSION?: RateLimit;
+  RL_IP?: RateLimit;
+  RL_TARGET?: RateLimit;
+  RL_GLOBAL?: RateLimit;
 };
+
+/// Checks an atomic limiter if one is bound, and a KV counter if not.
+///
+/// Returns true when the request is allowed. The KV path is deliberately
+/// the weaker of the two and is documented as such rather than pretending
+/// the guarantee is the same.
+async function limited(
+  rl: RateLimit | undefined,
+  kv: KVNamespace,
+  key: string,
+  perMinute: number,
+): Promise<boolean> {
+  if (rl) return !(await rl.limit({ key })).success;
+  const bucket = `rl:${key}:${Math.floor(Date.now() / 60_000)}`;
+  const n = Number((await kv.get(bucket)) ?? "0");
+  if (n >= perMinute) return true;
+  await kv.put(bucket, String(n + 1), { expirationTtl: 120 });
+  return false;
+}
 
 /// Per-client rate limiting, layered over IP-prefix, per-target and global
 /// limits.
@@ -110,18 +137,18 @@ export async function spend(
 
   // Broadest and cheapest first, so an attacker cannot spend the expensive
   // checks on their way to being refused.
-  if (!(await env.RL_GLOBAL.limit({ key: "all" })).success) {
+  if (await limited(env.RL_GLOBAL, env.QUOTA, "all", 240)) {
     return { ok: false, reason: "global" };
   }
-  if (!(await env.RL_IP.limit({ key: ipPrefix(ip) })).success) {
+  if (await limited(env.RL_IP, env.QUOTA, `ip:${ipPrefix(ip)}`, 90)) {
     return { ok: false, reason: "ip" };
   }
-  if (!(await env.RL_SESSION.limit({ key: sub })).success) {
+  if (await limited(env.RL_SESSION, env.QUOTA, `s:${sub}`, ALLOWANCE.requestsPerMinute)) {
     return { ok: false, reason: "rate" };
   }
   // Per-target-origin, so the relay cannot be turned into a scraper aimed
   // at one unlucky site.
-  if (!(await env.RL_TARGET.limit({ key: targetHost })).success) {
+  if (await limited(env.RL_TARGET, env.QUOTA, `t:${targetHost}`, 60)) {
     return { ok: false, reason: "target" };
   }
 

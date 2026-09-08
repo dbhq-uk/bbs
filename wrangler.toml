@@ -7,32 +7,15 @@ pages_build_output_dir = "shell/dist"
 # session allowance never decrements and the metering banner lies.
 [[kv_namespaces]]
 binding = "QUOTA"
-id = "REPLACE_WITH_REAL_NAMESPACE_ID"
+id = "700825175cd149b09ac512fc79dc6fff"
 
-# Atomic rate limiting. Sized against the Workers free tier of 100,000
-# requests/day. RL_GLOBAL is a burst brake, not the daily cap - an earlier
-# draft used 2,000/minute, which permits 2.88 million a day and protects
-# nothing.
-[[unsafe.bindings]]
-name = "RL_GLOBAL"
-type = "ratelimit"
-namespace_id = "1001"
-simple = { limit = 40, period = 10 }
-
-[[unsafe.bindings]]
-name = "RL_IP"
-type = "ratelimit"
-namespace_id = "1002"
-simple = { limit = 30, period = 60 }
-
-[[unsafe.bindings]]
-name = "RL_SESSION"
-type = "ratelimit"
-namespace_id = "1003"
-simple = { limit = 20, period = 60 }
-
-[[unsafe.bindings]]
-name = "RL_TARGET"
-type = "ratelimit"
-namespace_id = "1004"
-simple = { limit = 60, period = 60 }
+# NOTE: rate-limit bindings are NOT here, and cannot be.
+#
+# Cloudflare Pages rejects `unsafe` bindings, which is the only way to
+# declare a ratelimit binding, so `wrangler pages deploy` fails outright
+# with "Configuration file for Pages projects does not support unsafe".
+# Workers with static assets DO support them.
+#
+# Until this project migrates from Pages to a Worker, functions/_lib/quota.ts
+# falls back to KV counters, which are read-modify-write and therefore
+# approximate under a burst. See the open issue on the repo.
