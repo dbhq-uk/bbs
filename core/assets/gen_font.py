@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""Generate core/assets/cp437-8x16.bin.
+
+The obvious route - curl a ROM dump off GitHub - was tried first and both
+candidate URLs were dead (8 Sep 2026). A generator is better anyway: the
+provenance is this script rather than a link that rots, and the block and
+line-drawing glyphs come out geometrically exact rather than inheriting
+whatever a particular BIOS dump happened to contain.
+
+Output: 4096 bytes. 256 glyphs, 16 rows each, one byte per row, MSB is the
+leftmost pixel. That is the layout core/src/font.rs expects.
+
+Two sources, in order of precedence:
+
+1. Geometric definitions for the shade, block and line-drawing range. These
+   are the glyphs the image quantiser actually chooses between, so they must
+   be exact - a half block has to be exactly half.
+2. A system PSF console font for everything else, mapped through Python's
+   cp437 codec so each CP437 byte gets the glyph for the right character.
+"""
+
+import gzip
+import sys
+from pathlib import Path
+
+PSF = "/usr/share/consolefonts/Uni2-VGA16.psf.gz"
+OUT = Path(__file__).parent / "cp437-8x16.bin"
+
+W, H = 8, 16
+
+
+def load_psf1(path):
+    """Returns {unicode_char: [16 row bytes]} from a PSF1 font."""
+    data = gzip.open(path, "rb").read()
+    if data[:2] != b"\x36\x04":
+        sys.exit(f"{path} is not PSF1")
+    mode, height = data[2], data[3]
+    count = 512 if mode & 0x01 else 256
+    if height != H:
+        sys.exit(f"expected {H}-row glyphs, got {height}")
+
+    glyphs = [list(data[4 + i * H : 4 + (i + 1) * H]) for i in range(count)]
+    if not mode & 0x02:
+        sys.exit("font has no unicode table, cannot map reliably")
+
+    table = data[4 + count * H :]
+    by_char, i, glyph = {}, 0, 0
+    seq = []
+    while i + 1 < len(table) and glyph < count:
+        v = table[i] | (table[i + 1] << 8)
+        i += 2
+        if v == 0xFFFF:
+            for ch in seq:
+                by_char.setdefault(ch, glyphs[glyph])
+            seq = []
+            glyph += 1
+        elif v == 0xFFFE:
+            seq = []  # start of a sequence, which we do not use
+        else:
+            seq.append(chr(v))
+    return by_char
+
+
+def geometric():
+    """Exact definitions for the glyphs the quantiser picks between."""
+    g = {}
+    blank = [0x00] * H
+    full = [0xFF] * H
+
+    g[0x20] = blank
+    g[0xDB] = full
+    g[0xDF] = [0xFF] * 8 + [0x00] * 8          # upper half
+    g[0xDC] = [0x00] * 8 + [0xFF] * 8          # lower half
+    g[0xDD] = [0xF0] * H                       # left half
+    g[0xDE] = [0x0F] * H                       # right half
+
+    # Shades: 25%, 50%, 75% dot patterns on a 2x2 lattice.
+    g[0xB0] = [0x88 if r % 2 == 0 else 0x22 for r in range(H)]
+    g[0xB1] = [0xAA if r % 2 == 0 else 0x55 for r in range(H)]
+    g[0xB2] = [0x77 if r % 2 == 0 else 0xDD for r in range(H)]
+
+    # Small centred square.
+    g[0xFE] = [0x00] * 4 + [0x7E] * 8 + [0x00] * 4
+
+    # Single and double box drawing. Built from a shared helper so the
+    # joins line up exactly; a hand-drawn set never quite does.
+    V, Hz = 0x18, 0xFF          # vertical stem, horizontal bar
+    VL, VR = 0x1C, 0xF8         # left/right stubs meeting the stem
+    mid = H // 2
+
+    def box(up, down, left, right, double=False):
+        rows = [0x00] * H
+        stem = 0x66 if double else V
+        bar = 0xFF
+        for r in range(H):
+            v = 0
+            if (up and r < mid) or (down and r > mid):
+                v |= stem
+            if r == mid:
+                if left:
+                    v |= 0xF0 | stem
+                if right:
+                    v |= 0x0F | stem
+                if up or down:
+                    v |= stem
+                if left and right:
+                    v |= bar
+            rows[r] = v
+        return rows
+
+    singles = {
+        0xB3: (1, 1, 0, 0), 0xC4: (0, 0, 1, 1), 0xDA: (0, 1, 0, 1),
+        0xBF: (0, 1, 1, 0), 0xC0: (1, 0, 0, 1), 0xD9: (1, 0, 1, 0),
+        0xC3: (1, 1, 0, 1), 0xB4: (1, 1, 1, 0), 0xC2: (0, 1, 1, 1),
+        0xC1: (1, 0, 1, 1), 0xC5: (1, 1, 1, 1),
+    }
+    for code, (u, d, l, r) in singles.items():
+        g[code] = box(u, d, l, r)
+
+    doubles = {
+        0xBA: (1, 1, 0, 0), 0xCD: (0, 0, 1, 1), 0xC9: (0, 1, 0, 1),
+        0xBB: (0, 1, 1, 0), 0xC8: (1, 0, 0, 1), 0xBC: (1, 0, 1, 0),
+        0xCC: (1, 1, 0, 1), 0xB9: (1, 1, 1, 0), 0xCB: (0, 1, 1, 1),
+        0xCA: (1, 0, 1, 1), 0xCE: (1, 1, 1, 1),
+    }
+    for code, (u, d, l, r) in doubles.items():
+        g[code] = box(u, d, l, r, double=True)
+
+    # A double horizontal is two bars, not one.
+    for code in (0xCD, 0xC9, 0xBB, 0xC8, 0xBC, 0xCB, 0xCA, 0xCE, 0xCC, 0xB9):
+        rows = g[code]
+        if code == 0xCD:
+            rows = [0x00] * (mid - 1) + [0xFF, 0x00, 0xFF] + [0x00] * (H - mid - 2)
+            g[code] = rows[:H]
+
+    _ = (VL, VR, Hz)  # kept for readability of the intent above
+    return g
+
+
+def main():
+    by_char = load_psf1(PSF)
+    geo = geometric()
+
+    out = bytearray()
+    missing = []
+    for code in range(256):
+        if code in geo:
+            rows = geo[code]
+        else:
+            try:
+                ch = bytes([code]).decode("cp437")
+            except UnicodeDecodeError:
+                ch = None
+            rows = by_char.get(ch)
+            if rows is None:
+                rows = [0x00] * H
+                if code >= 0x20:
+                    missing.append(code)
+        out.extend(bytes(rows))
+
+    assert len(out) == 4096, len(out)
+    OUT.write_bytes(bytes(out))
+    print(f"wrote {OUT} ({len(out)} bytes)")
+    if missing:
+        print(f"blank glyphs for {len(missing)} codes: "
+              + " ".join(f"{c:#04x}" for c in missing))
+
+
+if __name__ == "__main__":
+    main()
