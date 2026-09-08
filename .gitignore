@@ -1,0 +1,10 @@
+target/
+pkg/
+node_modules/
+dist/
+.env
+.env.local
+.wrangler/
+corpus/pages/
+test-results/
+playwright-report/

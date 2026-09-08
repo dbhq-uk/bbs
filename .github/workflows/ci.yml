@@ -1,0 +1,36 @@
+name: ci
+on: [push, pull_request]
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+      - run: cargo test --manifest-path core/Cargo.toml
+      - run: cargo clippy --manifest-path core/Cargo.toml --all-targets -- -D warnings
+      - run: cargo fmt --manifest-path core/Cargo.toml -- --check
+
+  # Rust-only CI would let every shell, Worker and production-build failure
+  # through, which is most of the surface area of this project.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: jetli/wasm-pack-action@v0.4.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # The WASM package must exist before the shell can install or build.
+      - run: wasm-pack build core --target web --release
+      - name: Fail if the payload has ballooned
+        run: |
+          size=$(gzip -9 -c core/pkg/bbs_core_bg.wasm | wc -c)
+          echo "wasm gzipped: $size bytes"
+          test "$size" -lt 250000

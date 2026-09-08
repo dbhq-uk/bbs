@@ -1,0 +1,12 @@
+[workspace]
+members = ["core"]
+resolver = "2"
+
+# This MUST live at the workspace root. Declared inside core/Cargo.toml
+# instead, Cargo silently ignores it and ships an unoptimised artifact.
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
