@@ -2,7 +2,7 @@ import { decodeToRgba } from "../images";
 import { gwFetch, type Meter } from "../gw";
 import { toRawNode } from "../parse";
 import type { Screen } from "../terminal";
-import { NO_DOCUMENT } from "./screens";
+import { gatewayMessage, NO_DOCUMENT } from "./screens";
 
 export type WebResult =
   | {
@@ -32,7 +32,7 @@ type Wasm = {
 
 export async function openUrl(url: string, wasm: Wasm): Promise<WebResult> {
   const got = await gwFetch(url);
-  if (!got.ok) return { ok: false, message: `${NO_DOCUMENT} (${got.reason})` };
+  if (!got.ok) return { ok: false, message: gatewayMessage(got.reason) };
 
   if (got.contentType.startsWith("image/")) {
     const { rgba, w, h } = await decodeToRgba(got.bytes);

@@ -5,6 +5,44 @@ import type { Meter } from "../gw";
 /// fight with the open web read as a joke rather than as a bug.
 export const NO_DOCUMENT = "REMOTE SYSTEM RETURNED NO READABLE DOCUMENT";
 
+/// Turns a relay error code into something a caller can act on.
+///
+/// The Worker returns machine codes and never presentation; this is where
+/// they become the board's voice. A raw code on screen tells the reader
+/// nothing about what to do next, which is what "(no session)" was doing.
+export function gatewayMessage(reason: string): string {
+  switch (reason) {
+    case "no session":
+    case "no_session":
+      return "CARRIER NOT ESTABLISHED - RELOAD TO REDIAL";
+    case "expired":
+      return "YOUR CALL HAS TIMED OUT - RELOAD TO REDIAL";
+    case "session spent":
+      return "NO REQUESTS LEFT THIS CALL - RELOAD TO REDIAL";
+    case "rate":
+    case "ip":
+    case "global":
+      return "SYSTEM BUSY - TRY AGAIN IN A MOMENT";
+    case "target":
+      return "THAT SITE HAS HAD ENOUGH OF US - TRY ANOTHER";
+    case "members_only":
+      return "MEMBERS ONLY - THAT ADDRESS IS OFF THE GUEST LIST";
+    case "timeout":
+      return "REMOTE SYSTEM DID NOT ANSWER";
+    case "too large":
+      return "REMOTE SYSTEM SENT TOO MUCH - REFUSED";
+    case "private address":
+    case "scheme":
+    case "port":
+    case "own origin":
+      return "THAT ADDRESS IS NOT REACHABLE FROM HERE";
+    default:
+      if (reason.startsWith("content type")) return "NOT A DOCUMENT THIS BOARD CAN READ";
+      if (reason.startsWith("upstream")) return `REMOTE SYSTEM SAID ${reason.slice(9)}`;
+      return NO_DOCUMENT;
+  }
+}
+
 const D = "═"; // double horizontal
 const V = "║"; // double vertical
 const TL = "╔";
