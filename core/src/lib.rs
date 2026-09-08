@@ -1,7 +1,9 @@
 use wasm_bindgen::prelude::*;
 
+pub mod chrome;
 pub mod doc;
 pub mod name;
+pub mod project;
 pub mod raw;
 pub mod role;
 pub mod screen;
