@@ -167,3 +167,20 @@ fn ansi_encoding_round_trips_a_screen_to_escape_sequences() {
     assert!(out.contains("\u{1b}["), "should contain escape sequences");
     assert!(out.contains("Hi"));
 }
+
+#[test]
+fn box_drawing_characters_survive_the_round_trip() {
+    // The board's own frames are written as Unicode box drawing. If
+    // to_cp437 cannot map them back they render as a screen full of
+    // question marks, which is exactly what happened first time.
+    assert_eq!(to_cp437("\u{2550}"), vec![0xCD]); // ═
+    assert_eq!(to_cp437("\u{2551}"), vec![0xBA]); // ║
+    assert_eq!(to_cp437("\u{2554}"), vec![0xC9]); // ╔
+    assert_eq!(to_cp437("\u{2557}"), vec![0xBB]); // ╗
+    assert_eq!(to_cp437("\u{255a}"), vec![0xC8]); // ╚
+    assert_eq!(to_cp437("\u{255d}"), vec![0xBC]); // ╝
+    assert_eq!(to_cp437("\u{2500}"), vec![0xC4]); // ─
+    assert_eq!(to_cp437("\u{2588}"), vec![0xDB]); // █
+    assert_eq!(to_cp437("\u{2591}"), vec![0xB0]); // ░
+    assert!(!to_cp437("\u{2554}\u{2550}\u{2557}").contains(&b'?'));
+}

@@ -20,10 +20,24 @@ pub fn to_cp437(s: &str) -> Vec<u8> {
             '\u{00A9}' => out.extend_from_slice(b"(C)"),
             '\u{00AE}' => out.extend_from_slice(b"(R)"),
             c if (c as u32) < 128 => out.push(c as u8),
-            c => out.push(latin1_to_cp437(c).unwrap_or(b'?')),
+            // The high CP437 range - box drawing, blocks, shades, Greek,
+            // maths - is the exact inverse of the table ansi.rs uses to
+            // print a screen, so derive it from there rather than
+            // maintaining a second list that can drift.
+            c => out.push(
+                latin1_to_cp437(c)
+                    .or_else(|| high_cp437(c))
+                    .unwrap_or(b'?'),
+            ),
         }
     }
     out
+}
+
+/// Unicode to CP437 for the 0x80..=0xFF range, inverted from
+/// `ansi::cp437_to_char` so the two can never disagree.
+fn high_cp437(c: char) -> Option<u8> {
+    (128u8..=255).find(|&b| crate::ansi::cp437_to_char(b) == c)
 }
 
 /// The accented characters that actually turn up in European web copy.

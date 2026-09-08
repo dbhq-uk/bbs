@@ -1,13 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="en-GB">
   <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>shell</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>bbs.dbhq.uk</title>
+    <meta name="description" content="The world wide web, as a bulletin board. A DBHQ experiment." />
+    <style>
+      html, body { margin: 0; background: #000; height: 100%; }
+      body { display: grid; place-items: center; }
+      canvas { image-rendering: pixelated; }
+      #turnstile { position: fixed; bottom: 8px; right: 8px; }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <canvas id="screen"></canvas>
+    <div id="turnstile"></div>
     <script type="module" src="/src/main.ts"></script>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
   </body>
 </html>
