@@ -7,6 +7,8 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4",
+    "jsdom": "^30.0.1",
+    "tsx": "^4.23.13",
     "typescript": "^5",
     "vitest": "^2",
     "wrangler": "^3"

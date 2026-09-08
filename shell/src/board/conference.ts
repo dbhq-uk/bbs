@@ -13,6 +13,24 @@ export async function loadConference(c: Conference): Promise<Item[]> {
         return new TextDecoder().decode(r.bytes);
       })();
 
+  // BBC arrives as HTML, not JSON: the relay hands back the page and the
+  // core projects it, so the conference listing is the page's own links.
+  if (c.id === "bbc") {
+    const doc = new DOMParser().parseFromString(raw, "text/html");
+    const byHref = new Map<string, string>();
+    for (const a of Array.from(doc.querySelectorAll("a[href]"))) {
+      const href = (a as HTMLAnchorElement).getAttribute("href") ?? "";
+      const text = (a.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (text.length > 18 && !byHref.has(href)) byHref.set(href, text);
+    }
+    return [...byHref.entries()]
+      .slice(0, 40)
+      .map(([href, title]) => ({
+        title,
+        url: new URL(href, "https://www.bbc.co.uk/news").toString(),
+      }));
+  }
+
   const data = JSON.parse(raw);
   switch (c.id) {
     case "hn":

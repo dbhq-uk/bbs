@@ -304,3 +304,68 @@ fn lists_keep_their_items_together() {
         }
     );
 }
+
+#[test]
+fn a_list_of_cards_is_descended_into_not_flattened_to_text() {
+    // Modern sites build card grids out of lists: every item holds a link,
+    // a heading and an image. Flattening to text content and returning
+    // threw all of that away - on the BBC News front page it reduced 119
+    // images and 210 links to none and seven.
+    let doc = el(
+        "body",
+        &[],
+        vec![el(
+            "ul",
+            &[],
+            vec![
+                el(
+                    "li",
+                    &[],
+                    vec![
+                        el("h3", &[], vec![txt("Headline one")]),
+                        el("a", &[("href", "/one")], vec![txt("Read one")]),
+                        el("img", &[("src", "/1.jpg"), ("alt", "Picture one")], vec![]),
+                    ],
+                ),
+                el(
+                    "li",
+                    &[],
+                    vec![
+                        el("h3", &[], vec![txt("Headline two")]),
+                        el("a", &[("href", "/two")], vec![txt("Read two")]),
+                    ],
+                ),
+            ],
+        )],
+    );
+    let d = project(&doc);
+    assert!(!d.blocks.iter().any(|b| matches!(b, Block::List { .. })),
+        "a card grid must not be flattened into a text list");
+    assert_eq!(
+        d.blocks.iter().filter(|b| matches!(b, Block::Link { .. })).count(), 2);
+    assert_eq!(
+        d.blocks.iter().filter(|b| matches!(b, Block::Image { .. })).count(), 1);
+    assert_eq!(
+        d.blocks.iter().filter(|b| matches!(b, Block::Heading { .. })).count(), 2);
+}
+
+#[test]
+fn a_list_of_plain_text_is_still_flattened() {
+    let doc = el(
+        "body",
+        &[],
+        vec![el(
+            "ul",
+            &[],
+            vec![
+                el("li", &[], vec![txt("Milk")]),
+                el("li", &[], vec![txt("Eggs")]),
+            ],
+        )],
+    );
+    let d = project(&doc);
+    assert_eq!(
+        d.blocks[0],
+        Block::List { items: vec!["Milk".into(), "Eggs".into()], ordered: false }
+    );
+}

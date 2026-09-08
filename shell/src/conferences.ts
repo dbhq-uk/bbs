@@ -26,8 +26,18 @@ export const CONFERENCES: Conference[] = [
     url: "https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=random&grnnamespace=0&grnlimit=20",
   },
   {
-    id: "gh",
+    // BBC News has no permissive-CORS API, so it goes through the relay
+    // like any other site. The front page is a list of story cards, which
+    // is exactly what a message base looks like.
+    id: "bbc",
     key: "3",
+    name: "BBC NEWS",
+    direct: false,
+    url: "https://www.bbc.co.uk/news",
+  },
+  {
+    id: "gh",
+    key: "4",
     name: "GITHUB - DBHQ",
     direct: true,
     url: "https://api.github.com/orgs/dbhq-uk/repos?per_page=30",

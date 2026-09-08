@@ -208,9 +208,13 @@ impl Walk<'_> {
                     .map(|c| c.text_content())
                     .filter(|s| !s.is_empty())
                     .collect();
-                // A list of links is a navigation block, not prose. Let the
-                // walk descend so each link is numbered and followable.
-                if !items.is_empty() && !list_is_all_links(n) {
+                // Only flatten a list when its items are genuinely plain
+                // text. Modern sites build card grids out of lists, and
+                // every item holds a link, a heading and an image - so
+                // flattening to text content and returning threw all of
+                // that away. On the BBC News front page that was 119
+                // images and 210 links reduced to seven links and none.
+                if !items.is_empty() && list_is_plain_text(n) {
                     self.blocks.push(Block::List { items, ordered });
                     return;
                 }
@@ -253,14 +257,28 @@ impl Walk<'_> {
     }
 }
 
-fn list_is_all_links(n: &RawNode) -> bool {
+/// Whether a list is a list of prose, rather than a container for
+/// structured content.
+///
+/// A list item holding a link, a heading or an image is a card, and its
+/// contents matter more than the text they happen to contain. Only a list
+/// whose items carry none of those is safe to flatten into a Block::List.
+fn list_is_plain_text(n: &RawNode) -> bool {
     let items: Vec<&RawNode> = n
         .children
         .iter()
         .filter(|c| native_role(c) == Role::ListItem)
         .collect();
     !items.is_empty()
-        && items
-            .iter()
-            .all(|li| li.children.iter().any(|c| native_role(c) == Role::Link))
+        && items.iter().all(|li| {
+            descendant_links(li).is_empty() && descendant_images(li).is_empty() && !has_heading(li)
+        })
+}
+
+fn has_heading(n: &RawNode) -> bool {
+    n.children.iter().any(|c| {
+        !c.is_text()
+            && !is_hidden(c)
+            && (matches!(native_role(c), Role::Heading(_)) || has_heading(c))
+    })
 }
