@@ -1,4 +1,4 @@
-use bbs_core::image::{quantise, quantise_with, Options};
+use bbs_core::image::{quantise, quantise_with, GlyphSet, Options};
 use bbs_core::screen::Colour;
 
 /// An RGBA buffer of a single flat colour.
@@ -63,7 +63,18 @@ fn a_horizontal_split_picks_a_half_block() {
     // 160x32 source would give eight rows, and row 0 would sample only
     // white, which is how this test was originally written wrong.
     let px = split(160, 4, (255, 255, 255), (0, 0, 0));
-    let s = quantise(&px, 160, 4, 80, 200);
+    let s = quantise_with(
+        &px,
+        160,
+        4,
+        Options {
+            cols: 80,
+            max_rows: 200,
+            detail: 0.0,
+            glyphs: GlyphSet::Blocks,
+            monochrome: false,
+        },
+    );
     assert_eq!(s.h, 1, "geometry check: this test needs exactly one row");
     let c = s.at(40, 0);
     assert!(
@@ -109,6 +120,7 @@ fn monochrome_mode_only_emits_black_and_white() {
         cols: 80,
         max_rows: 200,
         monochrome: true,
+        ..Default::default()
     };
     let s = quantise_with(&px, 160, 32, opts);
     for c in &s.cells {
@@ -138,7 +150,18 @@ fn a_vertical_split_picks_a_left_or_right_half_block() {
         }
     }
     // 16x16 at 2 columns gives 1 row, so one cell spans the whole width.
-    let s = quantise(&px, 16, 16, 2, 200);
+    let s = quantise_with(
+        &px,
+        16,
+        16,
+        Options {
+            cols: 2,
+            max_rows: 200,
+            detail: 0.0,
+            glyphs: GlyphSet::Blocks,
+            monochrome: false,
+        },
+    );
     let c = s.at(0, 0);
     assert!(
         c.ch == 0xDD || c.ch == 0xDE || c.ch == 0xDB || c.ch == 0x20,

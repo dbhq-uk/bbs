@@ -2,6 +2,7 @@ use wasm_bindgen::prelude::*;
 
 pub mod ansi;
 pub mod chrome;
+pub mod colour;
 pub mod doc;
 pub mod font;
 pub mod image;

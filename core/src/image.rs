@@ -1,31 +1,105 @@
-use crate::font::candidate_masks;
-use crate::screen::{Cell, Colour, Screen, PALETTE};
+//! Image to CP437 quantisation.
+//!
+//! Three things were wrong in the first implementation and all three are
+//! fixed here. Recording them because each is easy to reintroduce.
+//!
+//! 1. **The colour pair came from the glyph's own partition.** On a flat
+//!    cell both partitions have the same mean, so foreground and background
+//!    quantised to the same palette entry and no blend was ever *proposed*,
+//!    never mind chosen. Shade glyphs were structurally unreachable. The
+//!    search now considers palette pairs independently of the partition.
+//! 2. **Nearest-neighbour in sRGB.** Euclidean RGB distance is not
+//!    perceptual, and this palette has only four neutrals, so desaturated
+//!    mid-tones landed on saturated entries - a neutral grey background came
+//!    out bright cyan. Everything is Oklab now.
+//! 3. **Per-pixel error only.** At viewing distance the eye integrates a
+//!    dot lattice into its mean, but per-pixel squared error charges a
+//!    mixture for its variance, so a solid block beat every blend. The
+//!    objective is now mostly a filtered (tonal) term with a smaller native
+//!    (structural) term, which is the standard shape of a model-based
+//!    halftoning objective.
+//!
+//! The candidate set is the whole font. chafa's documentation is explicit
+//! that more symbols greatly improves quality, and the decomposition below
+//! makes the per-candidate cost O(1), so there is no reason to restrict it.
 
-/// Glyph cell size in pixels. This is why aspect correction is mandatory: a
-/// cell is twice as tall as it is wide, so sampling a square region per cell
-/// would stretch every image to double height.
+use crate::colour::{linear_to_oklab, palette_linear, palette_oklab, srgb_to_linear, Lab};
+use crate::font::glyph_mask;
+use crate::screen::{Cell, Colour, Screen};
+
 const CELL_W: u32 = 8;
 const CELL_H: u32 = 16;
 const SAMPLES: usize = (CELL_W * CELL_H) as usize;
 
-/// No colour dithering. The shade glyphs are the dither.
+/// How much of the objective is the filtered (tonal) term. The rest is the
+/// native (structural) term.
 ///
-/// This started as a 4x4 Bayer nudge on the mapped colour, which looked
-/// right on paper and was wrong in practice: the matrix is indexed per
-/// CELL, not per pixel, so a flat background alternated between two palette
-/// entries at 8x16-pixel granularity and read as a coarse checkerboard
-/// rather than as texture. Verified by eye on a test image, 8 Sep 2026.
-///
-/// The fix is to delete it rather than tune it. `░`, `▒` and `▓` with two
-/// palette colours already give 25%, 50% and 75% blends, which is exactly
-/// how a BBS artist got intermediate tones, and `choose_glyph` picks them
-/// on their own merits when the true colour sits between two palette
-/// entries. A per-cell nudge on top of that is noise, not dithering.
+/// The tonal term is what the eye sees at viewing distance and is what lets
+/// a shade glyph beat a solid block on an off-palette colour. The native
+/// term stops a numerically excellent mixture winning when its individual
+/// dots would be visible, and preserves genuine one-pixel detail. 0.9/0.1
+/// is the starting point Codex recommended; lower the native weight if
+/// shades are too timid, raise it if the output buzzes.
+/// Split between the filtered (tonal) and native (structural) terms.
+const W_TONAL: f32 = 0.5;
+    std::env::var("WT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.9)
+});
+const W_NATIVE: f32 = 1.0 - W_TONAL;
+
 #[derive(Debug, Clone, Copy)]
 pub struct Options {
     pub cols: u16,
     pub max_rows: u16,
     pub monochrome: bool,
+    pub glyphs: GlyphSet,
+    /// Local detail boost, 0 disables it.
+    ///
+    /// A face's internal variation is often smaller than the gap between
+    /// adjacent palette entries, so the whole face posterises to one flat
+    /// tone and the eyes vanish. An unsharp mask on luminance restores the
+    /// local contrast the palette needs to represent them.
+    ///
+    /// Deliberately NOT CLAHE: adaptive histogram equalisation elevates
+    /// pores, JPEG noise and background texture to the same status as the
+    /// features you want, which is a known failure mode.
+    pub detail: f32,
+}
+
+/// Which glyphs the quantiser may choose from.
+///
+/// `Blocks` is chafa's default register and it is the default here for the
+/// same reason: letters and accented characters carry strong, arbitrary
+/// shapes that read as ransom-note noise rather than as tone, even when
+/// they score well. `All` is the whole font and is genuinely better on
+/// dense, detailed sources where the extra shape vocabulary pays for
+/// itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GlyphSet {
+    Blocks,
+    Box,
+    All,
+}
+
+impl GlyphSet {
+    fn allows(self, code: u8) -> bool {
+        match self {
+            GlyphSet::All => true,
+            // Space, shades, blocks, half blocks and box drawing.
+            // Space, the three shades, the full block and the four half
+            // blocks. Deliberately NO box drawing: its thin strokes have
+            // clustered coverage that only makes sense on a real edge, and
+            // when the tonal term dominates they get chosen for their
+            // coverage fraction alone and read as scratchy noise.
+            GlyphSet::Blocks => matches!(
+                code,
+                0x20 | 0xB0 | 0xB1 | 0xB2 | 0xDB | 0xDC | 0xDD | 0xDE | 0xDF
+            ),
+            GlyphSet::Box => code == 0x20 || (0xB0..=0xDF).contains(&code) || code == 0xFE,
+        }
+    }
 }
 
 impl Default for Options {
@@ -34,6 +108,8 @@ impl Default for Options {
             cols: 80,
             max_rows: 37,
             monochrome: false,
+            glyphs: GlyphSet::Blocks,
+            detail: 1.2,
         }
     }
 }
@@ -51,42 +127,110 @@ pub fn quantise(rgba: &[u8], w: u32, h: u32, cols: u16, max_rows: u16) -> Screen
     )
 }
 
+/// Everything precomputed once per conversion rather than per cell.
+struct Tables {
+    /// Every glyph's bitmap as a 128-bit mask, and how many bits it sets.
+    glyphs: Vec<(u8, u128, u32)>,
+    pal_lin: [(f32, f32, f32); 16],
+    pal_lab: [Lab; 16],
+    /// Oklab of every (fg, bg, coverage) blend. Coverage is a count of set
+    /// pixels, 0..=128, so this is exact rather than interpolated.
+    blend: Vec<Lab>,
+}
+
+impl Tables {
+    fn new(mono: bool, set: GlyphSet) -> Self {
+        let pal_lin = palette_linear();
+        let pal_lab = palette_oklab();
+
+        let allowed: Vec<u8> = if mono { vec![0, 15] } else { (0..16).collect() };
+
+        let mut blend = vec![
+            Lab {
+                l: 0.0,
+                a: 0.0,
+                b: 0.0
+            };
+            16 * 16 * (SAMPLES + 1)
+        ];
+        for &f in &allowed {
+            for &b in &allowed {
+                for n in 0..=SAMPLES {
+                    // Mix in linear light, then convert. Mixing in sRGB or
+                    // in Oklab both give the wrong colour for a dot lattice.
+                    let a = n as f32 / SAMPLES as f32;
+                    let (fr, fg_, fb) = pal_lin[f as usize];
+                    let (br, bg_, bb) = pal_lin[b as usize];
+                    let lab = linear_to_oklab(
+                        a * fr + (1.0 - a) * br,
+                        a * fg_ + (1.0 - a) * bg_,
+                        a * fb + (1.0 - a) * bb,
+                    );
+                    blend[blend_index(f, b, n)] = lab;
+                }
+            }
+        }
+
+        // The whole font, minus glyphs whose coverage duplicates another's
+        // bitmap exactly - they are unreachable and only cost time.
+        let mut seen = std::collections::HashSet::new();
+        let mut glyphs = Vec::with_capacity(256);
+        for code in 0u8..=255 {
+            if !set.allows(code) {
+                continue;
+            }
+            let m = glyph_mask(code);
+            if seen.insert(m) {
+                glyphs.push((code, m, m.count_ones()));
+            }
+        }
+
+        Tables {
+            glyphs,
+            pal_lin,
+            pal_lab,
+            blend,
+        }
+    }
+}
+
+fn blend_index(f: u8, b: u8, n: usize) -> usize {
+    ((f as usize) * 16 + (b as usize)) * (SAMPLES + 1) + n
+}
+
 pub fn quantise_with(rgba: &[u8], w: u32, h: u32, opts: Options) -> Screen {
     if w == 0 || h == 0 || opts.cols == 0 {
         return Screen::new(0, 0);
     }
+    let rgba = &local_contrast(rgba, w, h, opts.detail);
 
-    // Aspect correction. Each output cell covers CELL_W x CELL_H source
-    // pixels after scaling, so the row count follows from the source aspect
-    // ratio divided by the cell aspect ratio.
+    // Aspect correction. A cell is twice as tall as it is wide, so sampling
+    // a square region per cell would stretch every image to double height.
     let cols = opts.cols as u32;
     let rows = {
         let r = (h as f32 * cols as f32 * CELL_W as f32) / (w as f32 * CELL_H as f32);
         (r.round() as u32).clamp(1, opts.max_rows as u32)
     };
 
+    let t = Tables::new(opts.monochrome, opts.glyphs);
     let mut screen = Screen::new(cols as u16, rows as u16);
-    let masks = candidate_masks();
-    let mut cell = [(0u8, 0u8, 0u8); SAMPLES];
+    let mut cell = [(0.0f32, 0.0f32, 0.0f32); SAMPLES];
 
     for cy in 0..rows {
         for cx in 0..cols {
             sample_cell(rgba, w, h, cx, cy, cols, rows, &mut cell);
-            screen.set(cx as u16, cy as u16, choose_glyph(&cell, &masks, &opts));
+            screen.set(cx as u16, cy as u16, choose_glyph(&cell, &t, &opts));
         }
     }
     screen
 }
 
-/// The 8x16 block of source pixels behind one output cell, as RGB triples.
+/// The 8x16 block of source pixels behind one output cell, in LINEAR light.
 ///
-/// Box-filters rather than point-samples. At 80 columns the whole target
-/// raster is 640px wide, so a 1200px source contributes under a third of its
-/// pixels if you point-sample, and fine texture, diagonals and small text
-/// alias badly.
-///
-/// Alpha is composited against black here rather than ignored, or every
-/// transparent PNG picks up a black rectangle and dark halos.
+/// Box-filters rather than point-samples: at 80 columns the whole raster is
+/// 640px wide, so point-sampling a 1200px source discards most of it and
+/// aliases fine texture badly. Alpha is composited against black, or every
+/// transparent PNG gains a black rectangle and dark halos.
 #[allow(clippy::too_many_arguments)]
 fn sample_cell(
     rgba: &[u8],
@@ -96,14 +240,13 @@ fn sample_cell(
     cy: u32,
     cols: u32,
     rows: u32,
-    out: &mut [(u8, u8, u8); SAMPLES],
+    out: &mut [(f32, f32, f32); SAMPLES],
 ) {
     let total_w = (cols * CELL_W) as f32;
     let total_h = (rows * CELL_H) as f32;
 
     for py in 0..CELL_H {
         for px in 0..CELL_W {
-            // The source rectangle this output sub-pixel covers.
             let x0 = ((cx * CELL_W + px) as f32 / total_w * w as f32).floor() as u32;
             let x1 = (((cx * CELL_W + px + 1) as f32 / total_w * w as f32).ceil() as u32)
                 .clamp(x0 + 1, w);
@@ -111,127 +254,200 @@ fn sample_cell(
             let y1 = (((cy * CELL_H + py + 1) as f32 / total_h * h as f32).ceil() as u32)
                 .clamp(y0 + 1, h);
 
-            let (mut r, mut g, mut b, mut n) = (0u32, 0u32, 0u32, 0u32);
+            let (mut r, mut g, mut b, mut n) = (0.0f32, 0.0f32, 0.0f32, 0u32);
             for sy in y0..y1 {
                 for sx in x0..x1 {
                     let i = ((sy * w + sx) * 4) as usize;
                     if i + 3 >= rgba.len() {
                         continue;
                     }
-                    let a = rgba[i + 3] as u32;
-                    r += rgba[i] as u32 * a / 255;
-                    g += rgba[i + 1] as u32 * a / 255;
-                    b += rgba[i + 2] as u32 * a / 255;
+                    let a = rgba[i + 3] as f32 / 255.0;
+                    r += srgb_to_linear(rgba[i]) * a;
+                    g += srgb_to_linear(rgba[i + 1]) * a;
+                    b += srgb_to_linear(rgba[i + 2]) * a;
                     n += 1;
                 }
             }
-            // n is zero only when the source rectangle fell entirely
-            // outside the buffer, which the clamps above make unreachable;
-            // dividing by max(1) keeps it total without a branch.
-            let n = n.max(1);
-            out[(py * CELL_W + px) as usize] = ((r / n) as u8, (g / n) as u8, (b / n) as u8);
+            let n = n.max(1) as f32;
+            out[(py * CELL_W + px) as usize] = (r / n, g / n, b / n);
         }
     }
 }
 
-/// Chooses the glyph and its two colours together, by reconstruction error.
+/// Chooses glyph, foreground and background jointly.
 ///
-/// The obvious implementation picks a luminance midpoint, binarises, matches
-/// the shape, then colours the result. That is wrong twice over: a single
-/// bright outlier drags the midpoint and destabilises the mask on
-/// photographs, and the colour choice cannot influence the shape choice even
-/// though the two interact.
+/// The cost is kept down by decomposing the per-pixel term. For a glyph
+/// mask, the native error is
 ///
-/// Instead, for each candidate glyph: partition the cell's samples by that
-/// glyph's own bitmap, take the mean colour of each side, map both to the
-/// palette, then score how far the reconstructed cell is from the source.
-/// The winner is the (glyph, fg, bg) triple with the lowest error, which is
-/// the quantity we actually care about. Same cost, no arbitrary threshold.
-fn choose_glyph(cell: &[(u8, u8, u8); SAMPLES], masks: &[(u8, u128)], opts: &Options) -> Cell {
+///   sum over set pixels of |sample - Cf|^2 + sum over clear pixels of |sample - Cb|^2
+///
+/// and each of those expands to `sumsq - 2 C . sum + n |C|^2`, so once the
+/// per-partition count, vector sum and scalar sum-of-squares are known the
+/// error for any colour pair is O(1). That is what makes searching the
+/// whole font against 36 colour pairs affordable.
+fn choose_glyph(cell: &[(f32, f32, f32); SAMPLES], t: &Tables, opts: &Options) -> Cell {
+    // Oklab of every sample, and the cell's mean colour in linear light.
+    let mut lab = [Lab {
+        l: 0.0,
+        a: 0.0,
+        b: 0.0,
+    }; SAMPLES];
+    let (mut mr, mut mg, mut mb) = (0.0f32, 0.0f32, 0.0f32);
+    for (i, &(r, g, b)) in cell.iter().enumerate() {
+        lab[i] = linear_to_oklab(r, g, b);
+        mr += r;
+        mg += g;
+        mb += b;
+    }
+    let n = SAMPLES as f32;
+    let mean_lab = linear_to_oklab(mr / n, mg / n, mb / n);
+
+    // ALL ordered palette pairs, not the ones nearest the cell mean.
+    //
+    // Pruning by proximity to the mean is structurally hostile to detail:
+    // an eye needs a dark foreground against a lighter background whose
+    // coverage-weighted blend matches skin, and that dark entry is nowhere
+    // near the cell mean, so pruning removed it before it could be scored.
+    // With only 16 colours there is no defensible reason to prune at all.
+    let near: &[u8] = if opts.monochrome { &[0, 15] } else { &ALL_16 };
+
     let mut best = Cell {
         ch: b' ',
         fg: Colour::Grey,
         bg: Colour::Black,
     };
-    let mut best_err = u64::MAX;
+    let mut best_err = f32::INFINITY;
 
-    for &(code, m) in masks {
-        // Mean colour of the pixels this glyph would paint, and of the rest.
-        let (fg_rgb, fg_n) = mean_where(cell, m, true);
-        let (bg_rgb, bg_n) = mean_where(cell, m, false);
+    for &(code, mask, set_n) in &t.glyphs {
+        // Partition sums, computed once per glyph rather than per pair.
+        let (mut s_l, mut s_a, mut s_b, mut s_q) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+        let (mut c_l, mut c_a, mut c_b, mut c_q) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
+        for (i, &p) in lab.iter().enumerate() {
+            let q = p.l * p.l + p.a * p.a + p.b * p.b;
+            if (mask >> (127 - i)) & 1 == 1 {
+                s_l += p.l;
+                s_a += p.a;
+                s_b += p.b;
+                s_q += q;
+            } else {
+                c_l += p.l;
+                c_a += p.a;
+                c_b += p.b;
+                c_q += q;
+            }
+        }
+        let set_f = set_n as f32;
+        let clr_f = (SAMPLES as u32 - set_n) as f32;
 
-        // A glyph covering everything or nothing has no shape, so its empty
-        // side carries no colour evidence. Fall back to the other side.
-        let fg_rgb = if fg_n == 0 { bg_rgb } else { fg_rgb };
-        let bg_rgb = if bg_n == 0 { fg_rgb } else { bg_rgb };
+        for &f in near.iter() {
+            let cf = t.pal_lab[f as usize];
+            // sumsq - 2 C . sum + n |C|^2
+            let e_fg = s_q - 2.0 * (cf.l * s_l + cf.a * s_a + cf.b * s_b)
+                + set_f * (cf.l * cf.l + cf.a * cf.a + cf.b * cf.b);
 
-        let fg = map_colour(fg_rgb, opts);
-        let bg = map_colour(bg_rgb, opts);
-        let err = reconstruction_error(cell, m, fg, bg);
+            for &b in near.iter() {
+                let cb = t.pal_lab[b as usize];
+                let e_bg = c_q - 2.0 * (cb.l * c_l + cb.a * c_a + cb.b * c_b)
+                    + clr_f * (cb.l * cb.l + cb.a * cb.a + cb.b * cb.b);
 
-        if err < best_err {
-            best_err = err;
-            best = Cell { ch: code, fg, bg };
+                let native = (e_fg + e_bg) / n;
+                let tonal = t.blend[blend_index(f, b, set_n as usize)].dist2(mean_lab);
+
+                let err = W_TONAL * tonal + W_NATIVE * native;
+                if err < best_err {
+                    best_err = err;
+                    best = Cell {
+                        ch: code,
+                        fg: Colour::from_index(f),
+                        bg: Colour::from_index(b),
+                    };
+                }
+            }
         }
     }
     best
 }
 
-/// Mean colour of the samples where the glyph bit is set (or clear).
-fn mean_where(cell: &[(u8, u8, u8); SAMPLES], mask: u128, set: bool) -> ((u8, u8, u8), u32) {
-    let (mut r, mut g, mut b, mut n) = (0u32, 0u32, 0u32, 0u32);
-    for (i, &c) in cell.iter().enumerate() {
-        let bit = (mask >> (127 - i)) & 1 == 1;
-        if bit == set {
-            r += c.0 as u32;
-            g += c.1 as u32;
-            b += c.2 as u32;
-            n += 1;
+const ALL_16: [u8; 16] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
+/// Unsharp mask on luminance only, in linear light.
+///
+/// Chroma is left alone: boosting it produces lurid colour fringing at
+/// every edge, and the information the palette is losing is tonal.
+fn local_contrast(rgba: &[u8], w: u32, h: u32, amount: f32) -> Vec<u8> {
+    if amount <= 0.0 {
+        return rgba.to_vec();
+    }
+    let n = (w * h) as usize;
+    // Luminance in linear light.
+    let mut lum = vec![0.0f32; n];
+    for i in 0..n {
+        let j = i * 4;
+        if j + 2 >= rgba.len() {
+            break;
+        }
+        lum[i] = 0.2126 * srgb_to_linear(rgba[j])
+            + 0.7152 * srgb_to_linear(rgba[j + 1])
+            + 0.0722 * srgb_to_linear(rgba[j + 2]);
+    }
+
+    // Blur radius scaled to the image, so the operator works on features
+    // rather than on a fixed pixel count.
+    let r = ((w.min(h) as f32) * 0.02).round().max(1.0) as i32;
+    let blur = box_blur(&lum, w, h, r);
+
+    let mut out = rgba.to_vec();
+    for i in 0..n {
+        let j = i * 4;
+        if j + 2 >= out.len() {
+            break;
+        }
+        let detail = lum[i] - blur[i];
+        let target = (lum[i] + amount * detail).clamp(0.0, 1.0);
+        // Scale the three channels by the luminance ratio, preserving hue.
+        let k = if lum[i] > 1e-4 { target / lum[i] } else { 1.0 };
+        for c in 0..3 {
+            let v = srgb_to_linear(out[j + c]) * k;
+            out[j + c] = linear_to_srgb(v.clamp(0.0, 1.0));
         }
     }
-    if n == 0 {
-        return ((0, 0, 0), 0);
-    }
-    (((r / n) as u8, (g / n) as u8, (b / n) as u8), n)
+    out
 }
 
-/// Squared RGB distance between the source cell and what this glyph and
-/// colour pair would actually draw.
-fn reconstruction_error(cell: &[(u8, u8, u8); SAMPLES], mask: u128, fg: Colour, bg: Colour) -> u64 {
-    let f = PALETTE[fg as usize];
-    let b = PALETTE[bg as usize];
-    let mut err = 0u64;
-    for (i, &c) in cell.iter().enumerate() {
-        let bit = (mask >> (127 - i)) & 1 == 1;
-        let p = if bit { f } else { b };
-        let dr = c.0 as i64 - p.0 as i64;
-        let dg = c.1 as i64 - p.1 as i64;
-        let db = c.2 as i64 - p.2 as i64;
-        err += (dr * dr + dg * dg + db * db) as u64;
-    }
-    err
+/// Two passes of a box blur, which is a good enough Gaussian here and is
+/// separable and O(1) per pixel.
+fn box_blur(src: &[f32], w: u32, h: u32, r: i32) -> Vec<f32> {
+    let mut a = blur_1d(src, w, h, r, true);
+    a = blur_1d(&a, w, h, r, false);
+    a
 }
 
-/// Nearest palette entry. See the note on Options: there is deliberately no
-/// dither nudge here, because the shade glyphs do that job properly.
-fn map_colour(rgb: (u8, u8, u8), opts: &Options) -> Colour {
-    let (r, g, b) = (rgb.0 as i32, rgb.1 as i32, rgb.2 as i32);
-
-    if opts.monochrome {
-        let l = (299 * r + 587 * g + 114 * b) / 1000;
-        return if l > 127 {
-            Colour::White
-        } else {
-            Colour::Black
-        };
-    }
-
-    let mut best = (0u8, i32::MAX);
-    for (i, &(pr, pg, pb)) in PALETTE.iter().enumerate() {
-        let d = (r - pr as i32).pow(2) + (g - pg as i32).pow(2) + (b - pb as i32).pow(2);
-        if d < best.1 {
-            best = (i as u8, d);
+fn blur_1d(src: &[f32], w: u32, h: u32, r: i32, horizontal: bool) -> Vec<f32> {
+    let (w, h) = (w as i32, h as i32);
+    let mut out = vec![0.0f32; (w * h) as usize];
+    let (outer, inner) = if horizontal { (h, w) } else { (w, h) };
+    for o in 0..outer {
+        for i in 0..inner {
+            let mut sum = 0.0;
+            let mut n = 0.0;
+            for k in -r..=r {
+                let p = (i + k).clamp(0, inner - 1);
+                let idx = if horizontal { o * w + p } else { p * w + o };
+                sum += src[idx as usize];
+                n += 1.0;
+            }
+            let idx = if horizontal { o * w + i } else { i * w + o };
+            out[idx as usize] = sum / n;
         }
     }
-    Colour::from_index(best.0)
+    out
+}
+
+fn linear_to_srgb(c: f32) -> u8 {
+    let v = if c <= 0.003_130_8 {
+        c * 12.92
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    };
+    (v.clamp(0.0, 1.0) * 255.0).round() as u8
 }
