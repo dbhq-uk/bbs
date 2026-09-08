@@ -1,0 +1,38 @@
+name = "bbs"
+compatibility_date = "2026-09-01"
+pages_build_output_dir = "shell/dist"
+
+# Replace with the real id printed by `wrangler kv namespace create QUOTA`.
+# A placeholder here deploys a Worker whose KV writes fail silently, so the
+# session allowance never decrements and the metering banner lies.
+[[kv_namespaces]]
+binding = "QUOTA"
+id = "REPLACE_WITH_REAL_NAMESPACE_ID"
+
+# Atomic rate limiting. Sized against the Workers free tier of 100,000
+# requests/day. RL_GLOBAL is a burst brake, not the daily cap - an earlier
+# draft used 2,000/minute, which permits 2.88 million a day and protects
+# nothing.
+[[unsafe.bindings]]
+name = "RL_GLOBAL"
+type = "ratelimit"
+namespace_id = "1001"
+simple = { limit = 40, period = 10 }
+
+[[unsafe.bindings]]
+name = "RL_IP"
+type = "ratelimit"
+namespace_id = "1002"
+simple = { limit = 30, period = 60 }
+
+[[unsafe.bindings]]
+name = "RL_SESSION"
+type = "ratelimit"
+namespace_id = "1003"
+simple = { limit = 20, period = 60 }
+
+[[unsafe.bindings]]
+name = "RL_TARGET"
+type = "ratelimit"
+namespace_id = "1004"
+simple = { limit = 60, period = 60 }

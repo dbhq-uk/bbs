@@ -9,3 +9,4 @@ corpus/pages/
 test-results/
 playwright-report/
 package-lock.json
+.dev.vars

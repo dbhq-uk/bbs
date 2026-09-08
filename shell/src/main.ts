@@ -38,18 +38,44 @@ async function boot() {
   onKey(handleKey);
   await openTurnstileSession();
   redraw();
+
+  // Deep link: ?url=... opens the gateway straight onto a page, so a
+  // rendered view can be shared as an ordinary link.
+  const deep = new URLSearchParams(location.search).get("url");
+  if (deep) await go(deep);
 }
 
 /// Renders the widget, waits for a token, exchanges it for a session. One
 /// challenge per session, not per request.
-function openTurnstileSession(): Promise<void> {
-  return new Promise((resolve) => {
-    const ts = (globalThis as Record<string, any>).turnstile;
-    const key = import.meta.env.VITE_TURNSTILE_SITE_KEY;
-    if (!ts || !key) {
+async function openTurnstileSession(): Promise<void> {
+  const key = import.meta.env.VITE_TURNSTILE_SITE_KEY;
+  if (!key) {
+    status = "GATEWAY OFFLINE - CONFERENCES ONLY";
+    return;
+  }
+  // The api.js tag is async defer, so `turnstile` can exist as a partial
+  // object before `render` is attached. Calling it early throws
+  // "t.render is not a function" and the session is never opened.
+  const ts = await waitForTurnstile();
+  if (!ts) {
+    // Turnstile did not initialise - blocked, offline, or an automation
+    // browser. Try the exchange anyway and let the Worker's secret decide.
+    //
+    // This is safe because it fails closed: locally the Worker holds
+    // Cloudflare's documented always-passes test secret, so a session is
+    // issued and the gateway works; in production it holds the real
+    // secret, which rejects any token that did not come from a solved
+    // challenge, so this path just reports the gateway offline.
+    try {
+      await openSession("no-turnstile");
+      status = "";
+    } catch {
       status = "GATEWAY OFFLINE - CONFERENCES ONLY";
-      return resolve();
     }
+    return;
+  }
+
+  return new Promise((resolve) => {
     ts.render("#turnstile", {
       sitekey: key,
       callback: async (token: string) => {
@@ -62,7 +88,28 @@ function openTurnstileSession(): Promise<void> {
         redraw();
         resolve();
       },
+      "error-callback": () => {
+        status = "NO CARRIER - GATEWAY OFFLINE";
+        redraw();
+        resolve();
+      },
     });
+  });
+}
+
+/// Polls until the Turnstile API is genuinely usable, or gives up. There is
+/// an onload query parameter for this, but polling keeps the readiness
+/// check next to the code that depends on it.
+function waitForTurnstile(timeoutMs = 8000): Promise<{ render: Function } | null> {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const tick = () => {
+      const ts = (globalThis as Record<string, any>).turnstile;
+      if (ts && typeof ts.render === "function") return resolve(ts);
+      if (Date.now() - started > timeoutMs) return resolve(null);
+      setTimeout(tick, 100);
+    };
+    tick();
   });
 }
 
