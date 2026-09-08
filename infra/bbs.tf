@@ -79,6 +79,15 @@ import {
   id = "${var.account_id}/bbs/${var.hostname}"
 }
 
+# The DNS record was created by hand too, and was missed on the first pass -
+# the apply then failed with "expected DNS record to not already be present
+# but already exists". Its id is zone-scoped, not account-scoped, which is
+# why the format differs from the others above.
+import {
+  to = cloudflare_record.bbs
+  id = "${var.zone_id}/806ed9512e1403729a3f1e9a1a513389"
+}
+
 import {
   to = cloudflare_workers_kv_namespace.quota
   id = "${var.account_id}/700825175cd149b09ac512fc79dc6fff"
