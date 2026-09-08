@@ -8,6 +8,11 @@ let session: string | null = null;
 
 export type Meter = { remaining: number; minutesLeft: number };
 
+/// Adopt a session minted by logon or confirm, replacing the guest one.
+export function setSession(token: string | null): void {
+  if (token) session = token;
+}
+
 export function haveSession(): boolean {
   return session !== null;
 }

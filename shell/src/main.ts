@@ -15,6 +15,8 @@ import { loadConference } from "./board/conference";
 import { fetchImage, openUrl, type WebResult } from "./board/web";
 import { CONFERENCES } from "./conferences";
 import { haveSession, openSession, type Meter } from "./gw";
+import { caller, confirm, logon, register } from "./auth";
+import { formKey, formLines, newForm, type Form } from "./board/forms";
 import { loginArt, menuArt, type Art } from "./board/art";
 import { meterLine } from "./board/screens";
 
@@ -26,6 +28,7 @@ let doc: Extract<WebResult, { ok: true }> | null = null;
 /// Typed input for the URL prompt and for multi-digit item numbers.
 let input = "";
 let status = "";
+let form: Form | null = null;
 
 const wasm = { render_document, render_image };
 
@@ -41,9 +44,27 @@ async function boot() {
   await openTurnstileSession();
   redraw();
 
+  const params = new URLSearchParams(location.search);
+
+  // The confirmation link from the welcome email lands here. Redeeming it
+  // raises the caller's level and opens the gateway, which is the whole
+  // point of asking for an address in the first place.
+  const token = params.get("confirm");
+  if (token) {
+    try {
+      const who = await confirm(token);
+      status = `WELCOME, ${who.handle}. THE OPEN INTERNET IS YOURS.`;
+      state = { screen: "menu" };
+    } catch (e) {
+      status = authMessage(e instanceof Error ? e.message : "unknown");
+    }
+    history.replaceState(null, "", location.pathname);
+    redraw();
+  }
+
   // Deep link: ?url=... opens the gateway straight onto a page, so a
   // rendered view can be shared as an ordinary link.
-  const deep = new URLSearchParams(location.search).get("url");
+  const deep = params.get("url");
   if (deep) await go(deep);
 }
 
@@ -170,6 +191,19 @@ function loadTurnstile(timeoutMs = 12000): Promise<{ render: Function } | null> 
 }
 
 async function handleKey(key: string) {
+  // Forms own every key except the abandon key, so a password containing
+  // "q" does not drop the caller back to the menu.
+  if ((state.screen === "logon" || state.screen === "register") && form) {
+    if (key === "Escape") {
+      form = null;
+      state = { screen: "menu" };
+      return redraw();
+    }
+    const ready = formKey(form, key);
+    if (!ready) return redraw();
+    return void (await submitForm());
+  }
+
   // Screens with a text prompt consume keys before navigation sees them.
   if (state.screen === "web" || state.screen === "conference") {
     if (key === "Enter") return void (await submitInput());
@@ -190,6 +224,19 @@ async function handleKey(key: string) {
     input = "";
     status = "";
     if (state.screen === "conference") await enterConference(state.id);
+    if (state.screen === "logon") {
+      form = newForm("LOG ON", [
+        { key: "email", label: "EMAIL:" },
+        { key: "password", label: "PASSWORD:", secret: true },
+      ]);
+    }
+    if (state.screen === "register") {
+      form = newForm("NEW USER APPLICATION", [
+        { key: "handle", label: "HANDLE:" },
+        { key: "email", label: "EMAIL:" },
+        { key: "password", label: "PASSWORD:", secret: true },
+      ]);
+    }
   }
   redraw();
 }
@@ -251,6 +298,62 @@ async function go(url: string) {
   }
 }
 
+/// Submits whichever form is on screen, and turns the server's codes into
+/// the board's voice. The server never sends a sentence.
+async function submitForm() {
+  if (!form) return;
+  form.busy = true;
+  form.status = "PLEASE WAIT...";
+  redraw();
+
+  try {
+    if (state.screen === "logon") {
+      const who = await logon(form.values.email, form.values.password);
+      form = null;
+      status = `WELCOME BACK, ${who.handle}`;
+      state = { screen: "menu" };
+    } else {
+      await register(form.values.handle, form.values.email, form.values.password);
+      form = null;
+      status = "CHECK YOUR MAIL FOR THE CONFIRMATION LINK";
+      state = { screen: "menu" };
+    }
+  } catch (e) {
+    const code = e instanceof Error ? e.message : "unknown";
+    if (form) {
+      form.busy = false;
+      form.status = authMessage(code);
+      // Send them back to the field most likely at fault.
+      if (code === "bad_handle" || code === "handle_taken") form.at = 0;
+    }
+  }
+  redraw();
+}
+
+/// Auth codes to the board's voice. The Worker returns codes only.
+function authMessage(code: string): string {
+  switch (code) {
+    case "bad_credentials":
+      return "LOGON INCORRECT";
+    case "handle_taken":
+      return "THAT HANDLE IS TAKEN - CHOOSE ANOTHER";
+    case "bad_handle":
+      return "HANDLES ARE 3 TO 20 LETTERS, DIGITS, - OR _";
+    case "bad_email":
+      return "THAT DOES NOT LOOK LIKE AN EMAIL ADDRESS";
+    case "password_short":
+      return "PASSWORD MUST BE 12 CHARACTERS OR MORE";
+    case "password_long":
+      return "PASSWORD IS TOO LONG";
+    case "token_invalid":
+      return "LINK EXPIRED OR ALREADY USED";
+    case "rate_limited":
+      return "TOO MANY ATTEMPTS - WAIT A MOMENT";
+    default:
+      return "THE SYSTEM COULD NOT COMPLETE THAT";
+  }
+}
+
 function redraw() {
   if (!term) return;
   // Bound to a const so TypeScript can narrow it; a module-level `let` is
@@ -259,10 +362,15 @@ function redraw() {
   switch (s.screen) {
     case "login":
       return art(loginArt(meter ? meterLine(meter) : "", status));
-    case "menu":
-      return art(menuArt(CONFERENCES, meter ? meterLine(meter) : "", status, input));
+    case "menu": {
+      const c = caller();
+      return art(menuArt(c, meter ? meterLine(meter) : "", status, input));
+    }
     case "web":
       return paint(webScreen(input, status, meter));
+    case "logon":
+    case "register":
+      return paint(form ? formLines(form) : ["", "   ..."]);
     case "conference": {
       const c = CONFERENCES.find((x) => x.id === s.id)!;
       return paint(conferenceScreen(c.name, items, s.page, input, status));

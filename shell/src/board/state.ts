@@ -3,6 +3,8 @@ import { CONFERENCES } from "../conferences";
 export type State =
   | { screen: "login" }
   | { screen: "menu" }
+  | { screen: "logon" }
+  | { screen: "register" }
   | { screen: "conference"; id: string; page: number }
   | { screen: "web" }
   | { screen: "reading"; page: number };
@@ -18,6 +20,8 @@ export function nextState(s: State, key: string): State {
 
     case "menu": {
       if (key === "W") return { screen: "web" };
+      if (key === "L") return { screen: "logon" };
+      if (key === "N") return { screen: "register" };
       const c = CONFERENCES.find((c) => c.key === key);
       return c ? { screen: "conference", id: c.id, page: 0 } : s;
     }
@@ -33,6 +37,8 @@ export function nextState(s: State, key: string): State {
       return s;
 
     case "web":
+    case "logon":
+    case "register":
       return s;
   }
 }

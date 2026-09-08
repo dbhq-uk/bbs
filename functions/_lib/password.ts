@@ -7,8 +7,33 @@
 /// Stored form: `pbkdf2$<iterations>$<salt b64>$<hash b64>`. The cost is
 /// recorded IN the string deliberately - without it, raising the iteration
 /// count later would invalidate every existing password, because nothing
-/// would know how an old hash was made.
-const ITERATIONS = 600_000;
+/// would know how an old hash was made. That mattered sooner than
+/// expected; see below.
+///
+/// 100,000 IS THE PLATFORM CEILING, NOT A CHOICE.
+///
+/// This was written at 600,000, the current OWASP figure for
+/// PBKDF2-SHA256, and every call threw in production:
+///
+///   NotSupportedError: Pbkdf2 failed: iteration counts above 100000 are
+///   not supported (requested 600000)
+///
+/// The Workers runtime refuses anything higher, so 100,000 is the most
+/// this platform can do. That is below current guidance and it is worth
+/// being plain about rather than quietly shipping a number that looks
+/// like a decision.
+///
+/// What makes it acceptable here: the board holds a handle, an email and
+/// a password hash, and nothing else - no payment details, no private
+/// messages until spec 3, and no reuse of anyone's identity elsewhere
+/// beyond what password reuse always costs. The salt is per-user and 32
+/// bytes, so precomputation buys an attacker nothing and they must attack
+/// each hash separately.
+///
+/// If Cloudflare raises the cap, raising this constant is safe precisely
+/// because the cost is recorded per hash: old hashes keep verifying at
+/// their own cost and new ones get the higher one.
+export const ITERATIONS = 100_000;
 const KEY_BITS = 256;
 
 export async function hash(plain: string): Promise<string> {

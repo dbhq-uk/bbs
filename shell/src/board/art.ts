@@ -1,3 +1,4 @@
+import { menuEntries } from "./menu-model";
 /// The board's ANSI art.
 ///
 /// Art-directed by Codex Astra, 8 Sep 2026, then edited. Astra's direction
@@ -171,11 +172,17 @@ export function loginArt(meterText: string, statusText: string): Art {
 }
 
 export function menuArt(
-  conferences: { key: string; name: string }[],
+  who: { handle: string; sl: number; flags: string },
   meterText: string,
   statusText: string,
   input: string,
 ): Art {
+  // Entries come from the level model, so what is shown and what is
+  // permitted are the same declaration and cannot disagree.
+  const entries = menuEntries(who.sl, who.flags);
+  const conferences = entries.filter((e) => /^[0-9]$/.test(e.key));
+  const commands = entries.filter((e) => !/^[0-9]$/.test(e.key) && e.key !== "W");
+  const gateway = entries.find((e) => e.key === "W");
   const small = [
     "    █▀▀▄ █▀▀▄ █  █ ▄▀▀▄",
     "    █  █ █▀▀▄ █▀▀█ █  █       MAIN MENU",
@@ -189,10 +196,12 @@ export function menuArt(
     "",
     "    CONFERENCES",
     "",
-    ...conferences.flatMap((c) => [`    ${c.key}) ${c.name}`, ""]),
+    ...conferences.flatMap((c) => [`    ${c.key}) ${c.label}`, ""]),
     "",
-    "    W) WORLD WIDE WEB GATEWAY",
-    "       Enter a URL. Bring back a board.",
+    ...(gateway
+      ? [`    W) ${gateway.label}`, `       ${gateway.hint ?? ""}`, ""]
+      : []),
+    ...commands.map((c) => `    ${c.key}) ${c.label}`),
     "",
     "    " + "─".repeat(72),
     "    " + (meterText || statusText),

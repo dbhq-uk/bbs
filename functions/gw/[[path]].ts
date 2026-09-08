@@ -1,8 +1,29 @@
 import { checkRequest } from "../_lib/guard";
 import { safeFetch, validateTarget } from "../_lib/fetchsafe";
 import { spend, type QuotaEnv } from "../_lib/quota";
+import { siteMatches, sites, type DbEnv, type Site } from "../_lib/db";
+import { read as readSession, type Session, type SessionEnv } from "../_lib/session";
+import { json } from "../_lib/http";
 
-type Env = QuotaEnv & { KILL_SWITCH?: string };
+type Env = QuotaEnv & SessionEnv & DbEnv & { KILL_SWITCH?: string };
+
+/// The gate, as a pure function so it can be tested without a network.
+///
+/// A guest may reach the curated list. A member may reach anything, but
+/// only while holding the G flag - revoking it closes the door without
+/// taking the board away, which is the reason flags exist alongside
+/// levels.
+export function mayFetch(
+  s: Session | null,
+  url: string,
+  list: Site[],
+): { ok: true } | { ok: false; reason: string } {
+  if (!s) return { ok: false, reason: "no_session" };
+  if (s.sl <= 0) return { ok: false, reason: "access_denied" };
+  if (s.sl >= 20 && s.flags.includes("G")) return { ok: true };
+  if (siteMatches(list, url)) return { ok: true };
+  return { ok: false, reason: "members_only" };
+}
 
 export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   if (env.KILL_SWITCH === "on") {
@@ -22,6 +43,14 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
 
   const target = validateTarget(body.url);
   if (!target.ok) return json({ error: target.reason }, 400);
+
+  // Who you are decides WHAT you may reach; the quota decides HOW MUCH.
+  // Both apply, and the cheaper identity check comes first.
+  const session = await readSession(env, token);
+  const allowed = mayFetch(session, body.url, await sites(env));
+  if (!allowed.ok) {
+    return json({ error: allowed.reason, sl: session?.sl ?? null }, 403);
+  }
 
   const allowance = await spend(env, token, ip, target.url.hostname);
   if (!allowance.ok) return json({ error: allowance.reason }, 429);
@@ -47,10 +76,3 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     },
   });
 };
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json", "x-content-type-options": "nosniff" },
-  });
-}

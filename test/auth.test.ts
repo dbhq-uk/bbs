@@ -28,7 +28,16 @@ describe("password hashing", () => {
     const stored = await hash("x");
     const [alg, iters] = stored.split("$");
     expect(alg).toBe("pbkdf2");
-    expect(Number(iters)).toBeGreaterThanOrEqual(600000);
+    expect(Number(iters)).toBeGreaterThanOrEqual(100000);
+  });
+
+  it("stays within the Workers PBKDF2 ceiling", async () => {
+    // The runtime refuses anything above 100,000 with
+    // "NotSupportedError: Pbkdf2 failed: iteration counts above 100000
+    // are not supported". This shipped at 600,000 and every call threw in
+    // production, so the ceiling gets a test rather than a comment.
+    const [, iters] = (await hash("x")).split("$");
+    expect(Number(iters)).toBeLessThanOrEqual(100000);
   });
 
   it("returns false on a malformed stored value rather than throwing", async () => {
@@ -86,5 +95,29 @@ describe("the curated guest list", () => {
   it("refuses an unparseable target", () => {
     expect(siteMatches(sites, "not a url")).toBe(false);
     expect(siteMatches(sites, "")).toBe(false);
+  });
+});
+
+describe("the account-existence oracle stays shut", () => {
+  it("the dummy hash verifies without throwing", async () => {
+    // logon() hashes against a dummy when there is no such user, so the
+    // response time does not reveal whether an address is registered.
+    //
+    // The dummy was hardcoded at 600,000 iterations while the real cost
+    // dropped to the Workers ceiling of 100,000, so verifying it threw
+    // NotSupportedError: an unknown address returned 500 while a known one
+    // returned 401. That is the oracle the dummy exists to prevent,
+    // reintroduced by a constant that drifted.
+    const { ITERATIONS } = await import("../functions/_lib/password");
+    const salt = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+    const dummy = `pbkdf2$${ITERATIONS}$${salt}$${salt}`;
+
+    await expect(verify("anything", dummy)).resolves.toBe(false);
+  });
+
+  it("the dummy cost matches the real cost, so it can never throw", async () => {
+    const { ITERATIONS } = await import("../functions/_lib/password");
+    const real = Number((await hash("x")).split("$")[1]);
+    expect(ITERATIONS).toBe(real);
   });
 });
