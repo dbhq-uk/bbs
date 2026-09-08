@@ -11,7 +11,7 @@
 #
 #   terraform init -backend-config=backend.hcl
 
-bucket = "bbs-tfstate"
+bucket = "dbhq-bbs-tfstate"
 key    = "bbs.tfstate"
 
 endpoints = { s3 = "https://691c21cdcf1b3fa4add70cc166e99733.r2.cloudflarestorage.com" }

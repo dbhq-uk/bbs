@@ -4,7 +4,7 @@ Cloudflare infrastructure for `bbs.dbhq.uk`, in code.
 
 ## State is this project's alone
 
-Its own R2 bucket, `bbs-tfstate`, and its own credential. That is not
+Its own R2 bucket, `dbhq-bbs-tfstate`, and its own credential. That is not
 tidiness. This configuration originally lived in the DBHQ repo's shared
 state, and a plan from there proposed **destroying `modem.dbhq.uk`'s Pages
 project, domain and DNS record** - resources present in the shared state but
