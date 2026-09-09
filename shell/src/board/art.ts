@@ -1,5 +1,5 @@
 import { menuEntries } from "./menu-model";
-/// The board's ANSI art, drawn for 132x60.
+/// The board's ANSI art, drawn for 132x50.
 ///
 /// Art-directed by Codex Astra, 8 Sep 2026, then edited. Astra's direction
 /// was a cold cyan DBHQ wordmark beside a violet doorway, with yellow
@@ -21,9 +21,9 @@ import { menuEntries } from "./menu-model";
 /// step with a string it could not see. The canvas below emits exactly the
 /// same three arrays; only the authoring changed.
 ///
-/// One technical detail that governs every block drawing here: in an 8x8
-/// cell `▀` and `▄` are 8x4 strips and `▌` and `▐` are 4x8. They are not
-/// interchangeable drawing units.
+/// One technical detail that governs every block drawing here: in an 8x16
+/// cell `▀` and `▄` are 8x8 squares but `▌` and `▐` are 4x16 strips. They
+/// are not interchangeable drawing units.
 
 export const C = {
   black: 0, blue: 1, green: 2, cyan: 3,
@@ -43,7 +43,7 @@ const K = {
 export type Art = { lines: string[]; fg: string[]; bg: string[] };
 
 const W = 132;
-const H = 60;
+const H = 50;
 
 /// A cell grid that emits the three parallel arrays render_art expects.
 class Canvas {
@@ -135,8 +135,8 @@ function header(c: Canvas, kicker: string, right: string): number {
   c.put(tx - 5, y + 1, "░▒▓█", K.CYAN);
   c.put(tx, y + 1, "B U L L E T I N   B O A R D   S Y S T E M", K.BCYAN);
   c.put(tx, y + 3, "the world wide web, as a board", K.WHITE);
-  c.put(tx, y + 5, `${W} columns · sixteen colours · no javascript`, K.DGREY);
-  c.put(tx, y + 7, kicker, K.BMAGENTA);
+  c.put(tx, y + 4, `${W} columns · sixteen colours · no javascript`, K.DGREY);
+  c.put(tx, y + 6, kicker, K.BMAGENTA);
   c.put(W - 5, y + 1, "█▓▒░", K.CYAN);
 
   c.put(0, 10, "═".repeat(W), K.BBLUE);
@@ -160,11 +160,11 @@ function footer(c: Canvas, meterText: string, statusText: string) {
 /// that also happens to tell you something true.
 function panel(c: Canvas, x: number, y: number, title: string, rows: [string, string][]) {
   const w = 40;
-  c.box(x, y, w, rows.length * 2 + 4, K.DGREY);
+  c.box(x, y, w, rows.length + 4, K.DGREY);
   c.put(x + 2, y + 1, title, K.BMAGENTA);
   rows.forEach(([label, value], i) => {
-    c.put(x + 2, y + 3 + i * 2, label, K.CYAN);
-    c.put(x + 20, y + 3 + i * 2, value, K.BCYAN);
+    c.put(x + 2, y + 3 + i, label, K.CYAN);
+    c.put(x + 20, y + 3 + i, value, K.BCYAN);
   });
 }
 
@@ -173,34 +173,31 @@ export function loginArt(meterText: string, statusText: string): Art {
   const top = header(c, "PUBLIC ACCESS · EST. 2026", "NODE 1 OF 1");
 
   c.put(4, top, "THE WORLD WIDE WEB, AS IT SHOULD HAVE BEEN", K.WHITE);
-  // Alternate rows, not consecutive ones. An 8x8 cell has no room for
-  // leading, so stacked lines let descenders touch the row below and the
-  // paragraph reads as one smear.
   c.put(4, top + 2, "Every page fetched is stripped of script, tracking and", K.GREY);
-  c.put(4, top + 4, "chrome, then redrawn in CP437 on your own machine.", K.GREY);
-  c.put(4, top + 6, "Images become ANSI art on the way past.", K.GREY);
+  c.put(4, top + 3, "chrome, then redrawn in CP437 on your own machine.", K.GREY);
+  c.put(4, top + 4, "Images become ANSI art on the way past.", K.GREY);
 
-  c.put(4, top + 9, "[ ENTER ]", K.BYELLOW);
-  c.put(16, top + 9, "LOG ON", K.WHITE);
-  c.put(4, top + 11, "[ N ]", K.BYELLOW);
-  c.put(16, top + 11, "New user application", K.GREY);
-  c.put(4, top + 13, "[ G ]", K.BYELLOW);
-  c.put(16, top + 13, "Guest - browse the curated list", K.GREY);
+  c.put(4, top + 7, "[ ENTER ]", K.BYELLOW);
+  c.put(16, top + 7, "LOG ON", K.WHITE);
+  c.put(4, top + 9, "[ N ]", K.BYELLOW);
+  c.put(16, top + 9, "New user application", K.GREY);
+  c.put(4, top + 11, "[ G ]", K.BYELLOW);
+  c.put(16, top + 11, "Guest - browse the curated list", K.GREY);
 
   // The extra rows 132x60 buys are worth filling: a board's front screen
   // carried news and a caller list, and empty space reads as unfinished.
-  c.put(4, top + 17, "╔═ BULLETINS ═╗", K.CYAN);
+  c.put(4, top + 14, "╔═ BULLETINS ═╗", K.CYAN);
   const news: [string, string][] = [
     ["09 Sep", "ANSI art decoder live - the archive renders properly now"],
-    ["09 Sep", "Board moved to 132x60, custom palettes on every image"],
+    ["09 Sep", "Board now 132x50, custom palettes on every image"],
     ["08 Sep", "Accounts open. Members reach any address, guests the list"],
   ];
   news.forEach(([when, what], i) => {
-    c.put(6, top + 19 + i * 2, when, K.DGREY);
-    c.put(15, top + 19 + i * 2, what, K.GREY);
+    c.put(6, top + 16 + i, when, K.DGREY);
+    c.put(15, top + 16 + i, what, K.GREY);
   });
 
-  c.put(4, top + 27, "╔═ LAST CALLERS ═╗", K.CYAN);
+  c.put(4, top + 21, "╔═ LAST CALLERS ═╗", K.CYAN);
   const callers: [string, string, string][] = [
     ["SYSOP", "09 Sep 07:41", "412"],
     ["hopper", "09 Sep 06:02", "38"],
@@ -208,7 +205,7 @@ export function loginArt(meterText: string, statusText: string): Art {
     ["ada", "08 Sep 21:50", "91"],
   ];
   callers.forEach(([who, when, calls], i) => {
-    const y = top + 29 + i * 2;
+    const y = top + 23 + i;
     c.put(6, y, who, who === "SYSOP" ? K.BCYAN : K.GREY);
     c.put(22, y, when, K.DGREY);
     c.put(40, y, calls.padStart(4) + " calls", K.DGREY);
@@ -245,21 +242,22 @@ export function menuArt(
   const commands = entries.filter((e) => !/^[0-9]$/.test(e.key) && e.key !== "W");
   const gateway = entries.find((e) => e.key === "W");
 
-  // Hints sit at column 40 and are clipped to 26 characters. The panel
-  // starts at 70, and an un-clipped hint ran straight under its border.
-  const HINT_X = 40;
-  const HINT_W = 26;
+  // Hints sit at column 40 and stop before the panel at 70. 28 characters
+  // clipped "Enter a URL. Bring back a board." mid-word, which reads as a
+  // rendering fault rather than a truncation.
+  const HINT_X = 36;
+  const HINT_W = 32;
   const hint = (h?: string) => (h ?? "").slice(0, HINT_W);
 
   c.put(4, top, "╔═ CONFERENCES ═╗", K.CYAN);
   conferences.forEach((e, i) => {
-    const y = top + 2 + i * 2;
+    const y = top + 2 + i;
     c.put(6, y, e.key, K.BYELLOW);
     c.put(9, y, e.label, K.GREY);
     if (e.hint) c.put(HINT_X, y, hint(e.hint), K.DGREY);
   });
 
-  let y = top + 3 + conferences.length * 2;
+  let y = top + 3 + conferences.length;
   if (gateway) {
     c.put(4, y, "╔═ THE GATEWAY ═╗", K.CYAN);
     c.put(6, y + 2, "W", K.BYELLOW);
@@ -289,7 +287,7 @@ export function menuArt(
     "Wikipedia", "BBC News", "Hacker News", "GOV.UK",
     "textfiles.com", "The ANSI Art Archive", "DBHQ",
   ];
-  c.put(4, top + 22, "╔═ OPEN TO EVERYONE ═╗", K.CYAN);
+  c.put(4, top + 18, "╔═ OPEN TO EVERYONE ═╗", K.CYAN);
   // Two columns, split once. The first attempt drew every entry into
   // column one using i % 4 and THEN drew the overflow into column two, so
   // entries 4-6 overwrote entries 0-2 before appearing again on the right.
@@ -297,10 +295,10 @@ export function menuArt(
   sites.forEach((name, i) => {
     const col = i < half ? 6 : 34;
     const rowIndex = i < half ? i : i - half;
-    c.put(col, top + 24 + rowIndex * 2, name, K.GREY);
+    c.put(col, top + 20 + rowIndex, name, K.GREY);
   });
 
-  panel(c, 70, top + 22, "THE BOARD", [
+  panel(c, 70, top + 18, "THE BOARD", [
     ["ENGINE", "Rust / WebAssembly"],
     ["RENDER", "on your machine"],
     ["IMAGES", "ANSI, custom palette"],

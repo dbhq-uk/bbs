@@ -11,38 +11,44 @@
 /// aspect is off by 12% and every long box rule is dashed.
 export const GLYPH_W = 8;
 
-/// THE BOARD RUNS AT 132x60.
+/// THE BOARD RUNS AT 132x50.
 ///
-/// VESA text mode 10Ch: 1056x480 with an 8x8 cell. It is the largest of the
-/// standard extended text modes, and DOS terminal programs - Telix, Qmodem,
-/// Telemate - used exactly these to show more of a screen at once. Nearly
-/// four times the cells of 80x25, which is what the image quantiser and the
-/// web projection both wanted.
+/// VESA text mode 10Bh with the 8x16 font: 1056x800. DOS terminal programs
+/// - Telix, Qmodem, Telemate - used the 132-column modes to show more of a
+/// screen at once, and this is 6,600 cells against 80x25's 2,000, which is
+/// what both the image quantiser and the web projection wanted.
 ///
 /// The cell is 8 wide here, not 9. The ninth column belongs to the 720x400
 /// 80-column mode, where it carried the inter-character gap and repeated
-/// the eighth column for box drawing; the 132-column modes are 8-dot, and a
-/// 9x8 cell would be wider than it is tall and distort every image.
+/// the eighth column for box drawing; the 132-column modes are 8-dot.
 export const CELL_W = 8;
 export const COLS = 132;
 
 /// The real text modes this board can be in.
 ///
-/// `pixelAspect` is how much taller than wide a pixel was, and it is not
-/// decoration - without it 132x60 draws as 1056x480, which is 2.20:1 and
-/// looks stretched flat, because no monitor of the era was that shape.
-/// These modes were displayed on 4:3 glass, so the pixels were never
-/// square: the framebuffer was wide and the tube stretched it back.
+/// `pixelAspect` is how much taller than wide a pixel was. These modes were
+/// displayed on 4:3 glass, so the pixels were rarely square: the
+/// framebuffer was wide and the tube stretched it back.
 ///
-/// 1056 / (4/3) / 480 = 1.65, and 720 / (4/3) / 400 = 1.35.
+/// BUT SCALING A BITMAP FONT IS THE ENEMY OF READING IT. The board first ran
+/// at 132x60, which is 1056x480 - 2.20:1, needing a 1.65x vertical stretch
+/// to reach 4:3. Nearest-neighbour at a non-integer factor duplicates some
+/// glyph rows and not others, so an 8x8 font came out lumpy and hard to
+/// read. Smoothing it instead would blur it, which is worse.
 ///
-/// This is applied at DISPLAY time only. The framebuffer keeps its real
-/// dimensions, so a cell is still 8x8 to the quantiser and to every glyph
-/// mask; only the CSS box is taller. Baking it into the cell instead would
-/// distort the glyphs and change what the quantiser is matching against.
+/// So the default mode is chosen to need NO scaling. 132x50 with the 8x16
+/// font is 1056x800, which is 1.32:1 - 4:3 to within one percent - and it
+/// uses the tall VGA font rather than the cramped 8x8 one. VESA mode 10Bh,
+/// as real as 10Ch, and 6,600 cells against 80x25's 2,000.
+///
+/// Where a mode does need correcting, it is applied at DISPLAY time only.
+/// The framebuffer keeps its real dimensions, so a cell is still 8x8 or
+/// 8x16 to the quantiser and to every glyph mask; only the CSS box changes.
+/// Baking it into the cell would distort the glyphs and change what the
+/// quantiser matches against.
 export const MODE_25 = { cols: 80, rows: 25, cellH: 16, cellW: 9, pixelAspect: 1.35 } as const;
 export const MODE_50 = { cols: 80, rows: 50, cellH: 8, cellW: 9, pixelAspect: 1.35 } as const;
-export const MODE_132 = { cols: 132, rows: 60, cellH: 8, cellW: 8, pixelAspect: 1.65 } as const;
+export const MODE_132 = { cols: 132, rows: 50, cellH: 16, cellW: 8, pixelAspect: 1.0 } as const;
 
 export const CELL_H = MODE_132.cellH;
 export const ROWS = MODE_132.rows;
