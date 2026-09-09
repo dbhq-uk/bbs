@@ -1,0 +1,28 @@
+# bbs.dbhq.uk
+#
+# What was here before was Cloudflare's managed content-signals file, which
+# is all comments: no User-agent, no Allow, no Sitemap. It expressed a
+# licensing position and gave crawlers no instructions at all.
+
+# Content signals, kept from that file. A signal of `no` withholds
+# permission for that use; the absence of a signal neither grants nor
+# restricts it. These are express reservations of rights under Article 4 of
+# EU Directive 2019/790.
+#
+#   search:   building a search index and returning links and short excerpts
+#   ai-input: feeding content to an AI model at answer time
+#   ai-train: training or fine-tuning AI models
+
+User-agent: *
+Content-Signal: search=yes, ai-train=no
+Allow: /
+
+# The relay is not content. It is a POST-only endpoint that fetches other
+# people's pages, so a crawler following it would attribute their words to
+# this domain, and every hit spends a real quota.
+Disallow: /gw/
+Disallow: /auth/
+Disallow: /session
+Disallow: /sites
+
+Sitemap: https://bbs.dbhq.uk/sitemap.xml

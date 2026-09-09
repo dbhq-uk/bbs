@@ -1,0 +1,40 @@
+# bbs.dbhq.uk
+
+> A bulletin board system that fronts the live web. Web pages are stripped of
+> script, tracking and layout, then redrawn as 16-colour CP437 text on an
+> 80-column screen. Photographs are converted to ANSI art in the browser.
+
+## What it does
+
+- **Renders web pages as text mode.** The HTML a server sends is read for its
+  landmarks and headings; nothing the page ships is executed. Pages built
+  entirely with JavaScript come back empty, and that is reported rather than
+  hidden.
+- **Converts images to ANSI and ASCII art.** Glyph, foreground and background
+  are chosen together per cell and scored against the original in a perceptual
+  colour space. Sixteen colours are chosen per image from the 262,144 a VGA
+  card could produce, which is what the XBIN format was for.
+- **Displays classic .ANS art**, including the SAUCE record naming the artist.
+
+## How it is built
+
+- Rust compiled to WebAssembly. All rendering happens on the reader's machine.
+- A Cloudflare Worker relays page fetches, because a browser cannot request
+  another origin directly. It returns bytes and never decides how anything
+  looks.
+- Source: https://github.com/dbhq-uk/bbs
+
+## Honest limits
+
+- Roughly 70% of a fifty-page corpus of real websites renders readably; the
+  measurement is published at
+  https://github.com/dbhq-uk/bbs/blob/main/corpus/REPORT.md
+- Single-page applications that build themselves with JavaScript do not work,
+  by design.
+- Small text in screenshots does not survive the conversion. That is a
+  resolution limit, not a defect.
+
+## Related
+
+- DBHQ: https://dbhq.uk/
+- Sister project: https://modem.dbhq.uk/

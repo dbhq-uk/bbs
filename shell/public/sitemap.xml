@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  One URL, and that is honest rather than lazy: the board is a single page
+  that draws every screen to a canvas, so there are no other addresses to
+  index. Padding this with fragment URLs would list pages that do not exist.
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://bbs.dbhq.uk/</loc>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>
