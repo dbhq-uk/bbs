@@ -16,6 +16,10 @@ serde_json = "1"
 
 [dev-dependencies]
 insta = "1"
+# Decoding PNG is a TEST-ONLY need. In the browser the shell hands the core
+# RGBA that the browser already decoded, so the wasm payload never carries a
+# decoder and the size budget is untouched.
+png = "0.17"
 
 # wasm-pack 0.13.1 bundles a binaryen that predates the bulk-memory
 # proposal, but Rust 1.98 emits `memory.fill` by default, so the stock
