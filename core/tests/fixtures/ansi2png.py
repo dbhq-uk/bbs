@@ -85,7 +85,13 @@ def parse(text):
     return rows
 
 
-def render(rows, font_bytes, scale=1):
+def render(rows, font_bytes, scale=1, pixel_aspect=1.0):
+    """`pixel_aspect` matches what the browser does at display time.
+
+    These text modes ran on 4:3 glass, so their pixels were taller than
+    wide - 1056x480 is 2.20:1 and no monitor was that shape. Without this a
+    preview looks stretched flat and nothing like the board.
+    """
     cell_h = len(font_bytes) // 256
     w = max(len(r) for r in rows) * 8
     h = len(rows) * cell_h
@@ -101,6 +107,8 @@ def render(rows, font_bytes, scale=1):
                     px[x * 8 + gx, y * cell_h + gy] = PALETTE[fg if on else bg]
     if scale != 1:
         im = im.resize((w * scale, h * scale), Image.NEAREST)
+    if pixel_aspect != 1.0:
+        im = im.resize((im.width, round(im.height * pixel_aspect)), Image.NEAREST)
     return im
 
 
@@ -119,5 +127,6 @@ if __name__ == "__main__":
         text = text.split("---\n", 2)[-1]
     with open(FONT, "rb") as f:
         font_bytes = f.read()
-    render(parse(text), font_bytes).save(out)
+    aspect = float(os.environ.get("BBS_PIXEL_ASPECT", "1"))
+    render(parse(text), font_bytes, pixel_aspect=aspect).save(out)
     print(f"{out}")

@@ -27,9 +27,22 @@ export const CELL_W = 8;
 export const COLS = 132;
 
 /// The real text modes this board can be in.
-export const MODE_25 = { cols: 80, rows: 25, cellH: 16, cellW: 9 } as const;
-export const MODE_50 = { cols: 80, rows: 50, cellH: 8, cellW: 9 } as const;
-export const MODE_132 = { cols: 132, rows: 60, cellH: 8, cellW: 8 } as const;
+///
+/// `pixelAspect` is how much taller than wide a pixel was, and it is not
+/// decoration - without it 132x60 draws as 1056x480, which is 2.20:1 and
+/// looks stretched flat, because no monitor of the era was that shape.
+/// These modes were displayed on 4:3 glass, so the pixels were never
+/// square: the framebuffer was wide and the tube stretched it back.
+///
+/// 1056 / (4/3) / 480 = 1.65, and 720 / (4/3) / 400 = 1.35.
+///
+/// This is applied at DISPLAY time only. The framebuffer keeps its real
+/// dimensions, so a cell is still 8x8 to the quantiser and to every glyph
+/// mask; only the CSS box is taller. Baking it into the cell instead would
+/// distort the glyphs and change what the quantiser is matching against.
+export const MODE_25 = { cols: 80, rows: 25, cellH: 16, cellW: 9, pixelAspect: 1.35 } as const;
+export const MODE_50 = { cols: 80, rows: 50, cellH: 8, cellW: 9, pixelAspect: 1.35 } as const;
+export const MODE_132 = { cols: 132, rows: 60, cellH: 8, cellW: 8, pixelAspect: 1.65 } as const;
 
 export const CELL_H = MODE_132.cellH;
 export const ROWS = MODE_132.rows;
@@ -74,6 +87,7 @@ export class Terminal {
   private fonts: Record<number, Uint8Array>;
   private cellH: number = MODE_132.cellH;
   private rows: number = MODE_132.rows;
+  private pixelAspect: number = MODE_132.pixelAspect;
 
   /// `fonts` maps cell height to font bytes: 16 always, 8 for the 80x50
   /// mode. Both come from the core so there is one source for the glyphs.
@@ -85,15 +99,16 @@ export class Terminal {
     if (!ctx) throw new Error("no 2d context");
     this.ctx = ctx;
 
-    this.setMode(MODE_132.rows, MODE_132.cellH);
+    this.setMode(MODE_132.rows, MODE_132.cellH, MODE_132.pixelAspect);
   }
 
   /// Switches text mode. A VGA card did this by loading a different font,
   /// which is exactly what happens here.
-  setMode(rows: number, cellH: number) {
+  setMode(rows: number, cellH: number, pixelAspect = this.pixelAspect) {
     if (!this.fonts[cellH]) return;
     this.rows = rows;
     this.cellH = cellH;
+    this.pixelAspect = pixelAspect;
     this.resize();
     this.rebuild();
   }
@@ -117,10 +132,19 @@ export class Terminal {
     const dpr = window.devicePixelRatio || 1;
     const w = COLS * CELL_W;
     const h = this.rows * this.cellH;
+
+    // The BACKING STORE stays at the mode's real pixel size, so glyphs are
+    // drawn on exact pixel boundaries and stay crisp.
     this.canvas.width = w * dpr;
     this.canvas.height = h * dpr;
+
+    // The CSS box is taller. This is the tube doing the stretching, which
+    // is where it happened, and `image-rendering: pixelated` keeps the
+    // scale-up hard-edged rather than blurring it.
     this.canvas.style.width = `${w}px`;
-    this.canvas.style.height = `${h}px`;
+    this.canvas.style.height = `${Math.round(h * this.pixelAspect)}px`;
+    this.canvas.style.imageRendering = "pixelated";
+
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.ctx.imageSmoothingEnabled = false;
   }
