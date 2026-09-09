@@ -19,7 +19,7 @@ a board connected to today's web.
 import os
 import re
 
-W, H = 80, 25
+W, H = 132, 60
 
 # Palette indices, ANSI order - see core/src/screen.rs.
 BLACK, RED, GREEN, BROWN, BLUE, MAGENTA, CYAN, GREY = range(8)
@@ -103,17 +103,72 @@ def blit_ansi(c, path, x0, y0):
         y += 1
 
 
+# A proper BBS header letterform: seven rows, drawn with block halves so
+# the strokes have weight, and a drop shadow to the lower right. This is the
+# idiom every board used - the logo was the first thing a caller saw at 2400
+# baud and it had to be worth the wait.
+BIG = {
+    "D": ["██████▄ ", "██   ██ ", "██   ██ ", "██   ██ ", "██   ██ ", "██████▀ ", "        "],
+    "B": ["██████▄ ", "██   ██ ", "██████  ", "██   ██ ", "██   ██ ", "██████▀ ", "        "],
+    "H": ["██   ██ ", "██   ██ ", "███████ ", "██   ██ ", "██   ██ ", "██   ██ ", "        "],
+    "Q": [" █████  ", "██   ██ ", "██   ██ ", "██ █ ██ ", "██  ███ ", " ███████", "        "],
+    "S": [" ██████ ", "██      ", " █████  ", "     ██ ", "██   ██ ", " █████  ", "        "],
+    "T": ["███████ ", "   ██   ", "   ██   ", "   ██   ", "   ██   ", "   ██   ", "        "],
+    "A": [" █████  ", "██   ██ ", "██   ██ ", "███████ ", "██   ██ ", "██   ██ ", "        "],
+    "N": ["██   ██ ", "███  ██ ", "████ ██ ", "██ ████ ", "██  ███ ", "██   ██ ", "        "],
+    "I": ["███████ ", "   ██   ", "   ██   ", "   ██   ", "   ██   ", "███████ ", "        "],
+    " ": ["    ", "    ", "    ", "    ", "    ", "    ", "    "],
+}
+
+
+def big_text(c, x, y, text, ramp=(BBLUE, BCYAN, CYAN, WHITE), shadow=DGREY):
+    """Large block lettering with a vertical colour ramp and a drop shadow.
+
+    The ramp runs top to bottom rather than left to right: a board's logo
+    read as lit from above, and colouring per letter instead makes it look
+    like a ransom note.
+    """
+    # TWO passes. Drawing each letter's shadow immediately before its own
+    # row means the next row's glyph paints straight over it, which left the
+    # shadow visible only under the last row.
+    for i, ch in enumerate(text):
+        glyph = BIG.get(ch.upper())
+        if not glyph:
+            continue
+        wide = len(glyph[0])
+        for r, line in enumerate(glyph):
+            for k, g in enumerate(line):
+                if g != " ":
+                    c.put(x + i * wide + k + 1, y + r + 1, "\u2592", shadow)
+    for i, ch in enumerate(text):
+        glyph = BIG.get(ch.upper())
+        if not glyph:
+            continue
+        wide = len(glyph[0])
+        for r, line in enumerate(glyph):
+            fg = ramp[min(r * len(ramp) // max(1, len(glyph) - 1), len(ramp) - 1)]
+            for k, g in enumerate(line):
+                if g != " ":
+                    c.put(x + i * wide + k, y + r, g, fg)
+    return x + len(text) * 8
+
+
+def banner(c, y=1):
+    """The full header: rules, logo, tagline, and a marquee of block shades."""
+    c.put(0, y, "\u2550" * W, BBLUE)
+    big_text(c, 6, y + 2, "DBHQ")
+    c.put(40, y + 3, "\u2591\u2592\u2593\u2588", CYAN)
+    c.put(45, y + 3, "B U L L E T I N   B O A R D   S Y S T E M", BCYAN)
+    c.put(45, y + 5, "the world wide web as it should have been", GREY)
+    c.put(45, y + 6, f"{W} columns \u00b7 sixteen colours \u00b7 no javascript", DGREY)
+    c.put(W - 8, y + 3, "\u2588\u2593\u2592\u2591", CYAN)
+    c.put(0, y + 10, "\u2550" * W, BBLUE)
+    return y + 12
+
+
 def wordmark(c, x, y):
-    """DBHQ in solid blocks - cold cyan, per the established direction."""
-    glyphs = {
-        "D": ["███ ", "█  █", "█  █", "█  █", "███ "],
-        "B": ["███ ", "█  █", "███ ", "█  █", "███ "],
-        "H": ["█  █", "█  █", "████", "█  █", "█  █"],
-        "Q": [" ██ ", "█  █", "█  █", "█ ██", " ███"],
-    }
-    for i, ch in enumerate("DBHQ"):
-        for r, line in enumerate(glyphs[ch]):
-            c.put(x + i * 5, y + r, line, BCYAN if i < 2 else CYAN)
+    """Kept for the smaller screens that do not carry the full banner."""
+    big_text(c, x, y, "DBHQ")
 
 
 def rule(c, y, fg=DGREY):
@@ -139,7 +194,7 @@ def welcome():
     c.put(28, 4, "░▒▓", DGREY)
     c.put(32, 3, "THE WORLD WIDE WEB", BCYAN)
     c.put(32, 4, "AS IT SHOULD HAVE BEEN", WHITE)
-    c.put(32, 6, "eighty columns · sixteen colours", DGREY)
+    c.put(32, 6, f"{W} columns · sixteen colours", DGREY)
     c.put(32, 7, "no javascript · no trackers", DGREY)
 
     rule(c, 9)

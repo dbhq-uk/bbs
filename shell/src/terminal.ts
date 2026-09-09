@@ -10,16 +10,29 @@
 /// Drawing at 8 is what a modern terminal does and it is subtly wrong - the
 /// aspect is off by 12% and every long box rule is dashed.
 export const GLYPH_W = 8;
-export const CELL_W = 9;
-export const COLS = 80;
 
-/// The two real VGA text modes. 80x25 uses a 16-row cell, 80x50 an 8-row
-/// one; the card switched fonts, it did not scale anything.
-export const MODE_25 = { rows: 25, cellH: 16 } as const;
-export const MODE_50 = { rows: 50, cellH: 8 } as const;
+/// THE BOARD RUNS AT 132x60.
+///
+/// VESA text mode 10Ch: 1056x480 with an 8x8 cell. It is the largest of the
+/// standard extended text modes, and DOS terminal programs - Telix, Qmodem,
+/// Telemate - used exactly these to show more of a screen at once. Nearly
+/// four times the cells of 80x25, which is what the image quantiser and the
+/// web projection both wanted.
+///
+/// The cell is 8 wide here, not 9. The ninth column belongs to the 720x400
+/// 80-column mode, where it carried the inter-character gap and repeated
+/// the eighth column for box drawing; the 132-column modes are 8-dot, and a
+/// 9x8 cell would be wider than it is tall and distort every image.
+export const CELL_W = 8;
+export const COLS = 132;
 
-export const CELL_H = MODE_25.cellH;
-export const ROWS = MODE_25.rows;
+/// The real text modes this board can be in.
+export const MODE_25 = { cols: 80, rows: 25, cellH: 16, cellW: 9 } as const;
+export const MODE_50 = { cols: 80, rows: 50, cellH: 8, cellW: 9 } as const;
+export const MODE_132 = { cols: 132, rows: 60, cellH: 8, cellW: 8 } as const;
+
+export const CELL_H = MODE_132.cellH;
+export const ROWS = MODE_132.rows;
 
 /// The line-drawing range whose ninth column repeats the eighth.
 function joinsAcross(code: number): boolean {
@@ -59,8 +72,8 @@ export class Terminal {
   private atlases: HTMLCanvasElement[] = [];
   private palette: string[] = PALETTE_CSS;
   private fonts: Record<number, Uint8Array>;
-  private cellH: number = MODE_25.cellH;
-  private rows: number = MODE_25.rows;
+  private cellH: number = MODE_132.cellH;
+  private rows: number = MODE_132.rows;
 
   /// `fonts` maps cell height to font bytes: 16 always, 8 for the 80x50
   /// mode. Both come from the core so there is one source for the glyphs.
@@ -72,7 +85,7 @@ export class Terminal {
     if (!ctx) throw new Error("no 2d context");
     this.ctx = ctx;
 
-    this.setMode(MODE_25.rows, MODE_25.cellH);
+    this.setMode(MODE_132.rows, MODE_132.cellH);
   }
 
   /// Switches text mode. A VGA card did this by loading a different font,

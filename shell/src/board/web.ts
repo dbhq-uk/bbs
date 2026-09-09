@@ -3,6 +3,10 @@ import { gwFetch, type Meter } from "../gw";
 import { toRawNode } from "../parse";
 import type { Screen } from "../terminal";
 import { gatewayMessage, NO_DOCUMENT } from "./screens";
+import { COLS, ROWS } from "../terminal";
+
+/// Rows left for content once the header and footer are drawn.
+const BODY_ROWS = ROWS - 10;
 
 export type WebResult =
   | {
@@ -50,7 +54,7 @@ export async function openUrl(url: string, wasm: Wasm): Promise<WebResult> {
   // projecting them would be like running a photograph through a spell
   // checker.
   if (got.contentType === "text/x-ansi") {
-    const art = wasm.render_ansi_art(new Uint8Array(got.bytes), 24) as {
+    const art = wasm.render_ansi_art(new Uint8Array(got.bytes), BODY_ROWS) as {
       pages: Screen[];
       title: string;
       author: string;
@@ -77,7 +81,7 @@ export async function openUrl(url: string, wasm: Wasm): Promise<WebResult> {
     // Sixteen colours chosen for this picture, snapped to the VGA DAC.
     // The palette comes back with the screen because the cell values are
     // indices into it - see PaletteMode::Auto in the core.
-    const img = wasm.render_image(rgba, w, h, 80, 24, false, 16, true, true) as {
+    const img = wasm.render_image(rgba, w, h, COLS, BODY_ROWS, false, 8, true, true) as {
       screen: Screen;
       palette: [number, number, number][];
     };
@@ -94,7 +98,7 @@ export async function openUrl(url: string, wasm: Wasm): Promise<WebResult> {
   }
 
   const html = new TextDecoder("utf-8").decode(got.bytes);
-  const result = wasm.render_document(toRawNode(html), 80, 23) as {
+  const result = wasm.render_document(toRawNode(html), COLS, BODY_ROWS) as {
     title: string;
     pages: Screen[];
     empty_shell: boolean;
@@ -132,7 +136,7 @@ export async function fetchImage(
   if (!got.ok || !got.contentType.startsWith("image/")) return null;
   try {
     const { rgba, w, h } = await decodeToRgba(got.bytes);
-    const img = wasm.render_image(rgba, w, h, 80, 24, false, 16, true, true) as {
+    const img = wasm.render_image(rgba, w, h, COLS, BODY_ROWS, false, 8, true, true) as {
       screen: Screen;
       palette: [number, number, number][];
     };

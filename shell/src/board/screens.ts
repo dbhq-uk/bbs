@@ -131,7 +131,9 @@ export function conferenceScreen(
   input: string,
   status: string,
 ): string[] {
-  const perPage = 16;
+  // 60 rows, not 25: a conference listing that showed 16 items on a
+  // screen with room for 40 is the 80x25 layout left behind.
+  const perPage = 40;
   const slice = items.slice(page * perPage, (page + 1) * perPage);
   return [
     "",
@@ -139,7 +141,7 @@ export function conferenceScreen(
     "   " + "─".repeat(name.length),
     "",
     ...slice.map((it, i) =>
-      `   [${String(page * perPage + i + 1).padStart(2)}] ${it.title}`.slice(0, 79),
+      `   [${String(page * perPage + i + 1).padStart(2)}] ${it.title}`.slice(0, 128),
     ),
     ...(slice.length === 0 ? ["   " + (status || "LOADING...")] : []),
     "",
