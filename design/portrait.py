@@ -31,6 +31,48 @@ from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 BACKGROUND = (10, 16, 66)
 
 
+def local_tone_map(img, subject, base_blur=34.0, base=0.52, detail=1.5):
+    """Compresses large-scale brightness while keeping local detail.
+
+    THIS IS WHAT THE EAR NEEDED. It is sunlit and sits about 68 levels
+    brighter than the cheek, so under k-means it forms its own bright
+    cluster, takes its own palette entries, and renders as a flat slab. It
+    is not actually featureless - the folds are clearly there in the source -
+    but that structure is small compared with the ear's overall offset from
+    the face, so every global tool missed it.
+    
+    A global highlight rolloff cannot fix that: pulling the top of the range
+    down drags the ear's detail down with it and flattens the real highlights
+    everywhere else, which is exactly what happened and why the picture went
+    dull. The quantiser's own unsharp boosts local contrast but leaves the
+    offset untouched, so the ear stayed a separate bright cluster.
+    
+    Splitting luminance into a blurred BASE and the residual DETAIL lets the
+    two be treated separately: squash the base so the ear sits nearer the
+    face and stops claiming its own palette entries, and lift the detail so
+    the folds survive the squashing. Colour is carried by scaling, so hue is
+    untouched.
+    """
+    a = np.asarray(img).astype(np.float32)
+    lum = np.maximum(a.mean(2), 1.0)
+
+    def blur(x):
+        out = x.astype(np.float32)
+        r = max(1, int(base_blur))
+        for _ in range(3):
+            out = _box(_box(out, r, 0), r, 1)
+        return out
+
+    b = blur(lum)
+    d = lum - b
+    pivot = float(np.median(lum[subject])) if subject.any() else float(np.median(lum))
+    out_lum = pivot + (b - pivot) * base + d * detail
+    out_lum = np.clip(out_lum, 1.0, 255.0)
+
+    scaled = a * (out_lum / lum)[..., None]
+    return Image.fromarray(np.clip(scaled, 0, 255).astype(np.uint8))
+
+
 def _box(x, r, axis):
     """One box-blur pass along an axis, by cumulative sum."""
     x = np.moveaxis(x, axis, 0)
@@ -106,16 +148,7 @@ def recover_chroma(img, subject, chroma_floor=32, blur=70.0):
 
 def prepare(src_path, out_path):
     src = Image.open(src_path).convert("RGB")
-    # Cropped past the ear on purpose.
-    #
-    # The ear is sunlit, large and almost featureless, and no amount of tone
-    # or chroma work fixed it: it is genuinely a big low-contrast bright area,
-    # so sixteen colours flatten it to one and it reads as a pale slab welded
-    # to the head. Highlight rolloff, chroma reconstruction and a heavy detail
-    # boost were each tried and each failed, the last two making the rest of
-    # the picture worse. Framing it out is what a portrait photographer would
-    # have done in the first place, and the face fills the frame better for it.
-    crop = src.crop((205, 70, 480, 530))
+    crop = src.crop((190, 50, 590, 545))
     crop = ImageOps.autocontrast(crop, cutoff=1)
     # Lift the shadowed face without blowing the sky.
     crop = Image.eval(crop, lambda v: int(255 * ((v / 255) ** 0.70)))
@@ -169,6 +202,7 @@ def prepare(src_path, out_path):
     mask = mask.filter(ImageFilter.MinFilter(3))
 
     subject_mask = np.asarray(mask).astype(bool)
+    crop = local_tone_map(crop, subject_mask)
     crop = recover_chroma(crop, subject_mask)
     out = Image.composite(crop, Image.new("RGB", crop.size, BACKGROUND), mask)
 
@@ -198,7 +232,10 @@ def prepare(src_path, out_path):
     # Lift it. The gamma and autocontrast above are set to protect the sky,
     # which is now gone, so the subject alone can carry more brightness.
     out = ImageEnhance.Brightness(out).enhance(1.18)
-    out = ImageEnhance.Contrast(out).enhance(1.15)
+    # Compressing the base costs global contrast, so some goes back on
+    # afterwards. Doing it this way round keeps the ear's structure, which
+    # a global contrast lift on its own would have clipped straight off.
+    out = ImageEnhance.Contrast(out).enhance(1.32)
     out = ImageEnhance.Color(out).enhance(1.10)
     out.save(out_path)
     covered = 100 * bg.mean()
