@@ -1,0 +1,73 @@
+# The projection corpus.
+#
+# Fifty real pages. The point is an honest number for how often the board
+# turns the live web into something readable, so this list is NOT curated
+# to flatter it: the SPA section is here on purpose, and those pages are
+# expected to come back as empty shells. A corpus of hand-picked static
+# blogs would produce a lovely percentage that means nothing.
+#
+# Format: <category> <url>. Blank lines and # comments ignored.
+
+# --- news ---------------------------------------------------------------
+news https://www.bbc.co.uk/news
+news https://www.theguardian.com/uk
+news https://text.npr.org/
+news https://apnews.com/
+news https://www.aljazeera.com/
+news https://news.ycombinator.com/
+news https://lite.cnn.com/
+news https://www.reuters.com/
+news https://www.independent.co.uk/
+news https://www.standard.co.uk/
+
+# --- documentation ------------------------------------------------------
+docs https://developer.mozilla.org/en-US/docs/Web/HTML/Element/table
+docs https://doc.rust-lang.org/book/ch01-02-hello-world.html
+docs https://docs.python.org/3/tutorial/introduction.html
+docs https://developers.cloudflare.com/workers/
+docs https://nodejs.org/api/fs.html
+docs https://www.postgresql.org/docs/current/sql-select.html
+docs https://git-scm.com/docs/git-rebase
+docs https://tldp.org/LDP/abs/html/
+docs https://www.sqlite.org/lang_select.html
+docs https://ziglang.org/documentation/master/
+
+# --- government ---------------------------------------------------------
+gov https://www.gov.uk/
+gov https://www.gov.uk/vehicle-tax
+gov https://www.legislation.gov.uk/ukpga/2018/12/contents
+gov https://www.parliament.uk/
+gov https://www.nhs.uk/conditions/
+gov https://www.usa.gov/
+gov https://www.ons.gov.uk/
+gov https://www.bankofengland.co.uk/
+gov https://www.judiciary.uk/
+gov https://www.ico.org.uk/
+
+# --- forums and discussion ----------------------------------------------
+forum https://lobste.rs/
+forum https://old.reddit.com/r/programming/
+forum https://stackoverflow.com/questions/tagged/rust
+forum https://discourse.julialang.org/
+forum https://community.cloudflare.com/
+forum https://forum.arduino.cc/
+forum https://news.ycombinator.com/item?id=1
+
+# --- blogs --------------------------------------------------------------
+blog https://danluu.com/
+blog https://jvns.ca/
+blog https://blog.cloudflare.com/
+blog https://simonwillison.net/
+blog https://overreacted.io/
+blog https://www.joelonsoftware.com/
+blog http://www.textfiles.com/
+blog http://artscene.textfiles.com/ansi/
+
+# --- known-hard: single-page-app shells ---------------------------------
+# Expected to fail. Included so the empty-shell number is honest. If these
+# ever start working, something in the projection got genuinely better.
+spa https://x.com/
+spa https://www.reddit.com/r/programming/
+spa https://www.notion.so/
+spa https://app.asana.com/
+spa https://figma.com/
