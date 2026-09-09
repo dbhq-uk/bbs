@@ -40,7 +40,7 @@ def _box(x, r, axis):
     return np.moveaxis(out, 0, axis)
 
 
-def recover_chroma(img, subject, chroma_floor=26, blur=18.0):
+def recover_chroma(img, subject, chroma_floor=32, blur=70.0):
     """Rebuilds colour in blown highlights from the skin around them.
 
     THE BLOB WAS A CHROMA PROBLEM, NOT A TONE ONE. The sun is behind him, so
@@ -59,12 +59,20 @@ def recover_chroma(img, subject, chroma_floor=26, blur=18.0):
     valid pixels, blur the validity mask itself, and divide. Valid
     neighbours therefore vote in proportion to how close they are, and the
     blown region never votes on its own colour.
+
+    THE RADIUS HAS TO EXCEED THE HOLE. A first attempt used 18 pixels on a
+    patch about 66 across, so the middle of it received almost no vote from
+    real skin, the normalised result came out near zero, and the centre
+    stayed exactly as neutral as before - a fix that worked only on the
+    edges of the thing it was meant to remove.
     """
     a = np.asarray(img).astype(np.float32)
     lum = a.mean(2)
     chroma = a.max(2) - a.min(2)
 
-    blown = subject & (chroma < chroma_floor) & (lum > np.percentile(lum[subject], 75))
+    # The ear and the skin behind the jaw measure chroma about 26 against
+    # 39-45 for ordinary skin, so the floor sits between them at 32.
+    blown = subject & (chroma < chroma_floor) & (lum > np.percentile(lum[subject], 60))
     if not blown.any():
         return img
 
@@ -98,7 +106,16 @@ def recover_chroma(img, subject, chroma_floor=26, blur=18.0):
 
 def prepare(src_path, out_path):
     src = Image.open(src_path).convert("RGB")
-    crop = src.crop((190, 50, 590, 545))
+    # Cropped past the ear on purpose.
+    #
+    # The ear is sunlit, large and almost featureless, and no amount of tone
+    # or chroma work fixed it: it is genuinely a big low-contrast bright area,
+    # so sixteen colours flatten it to one and it reads as a pale slab welded
+    # to the head. Highlight rolloff, chroma reconstruction and a heavy detail
+    # boost were each tried and each failed, the last two making the rest of
+    # the picture worse. Framing it out is what a portrait photographer would
+    # have done in the first place, and the face fills the frame better for it.
+    crop = src.crop((205, 70, 480, 530))
     crop = ImageOps.autocontrast(crop, cutoff=1)
     # Lift the shadowed face without blowing the sky.
     crop = Image.eval(crop, lambda v: int(255 * ((v / 255) ** 0.70)))
@@ -162,25 +179,27 @@ def prepare(src_path, out_path):
     # skin" and "white", so a clipped region lands entirely on white and
     # reads as a blob stuck to his face rather than as light. Compressing
     # the top of the range gives the quantiser something to grade across.
-    # Set from the SUBJECT's own distribution, not a guess. Measured on this
-    # frame: median luminance 112, p90 142, p95 175, p99 232 - so the blown
-    # rim is a 2.8% sliver sitting a full 100 levels above where the face
-    # lives, and neutral grey rather than skin-coloured.
+    # NO HEAVY HIGHLIGHT ROLLOFF. An earlier version put the knee at the
+    # subject's p90 with a hard ratio, which squeezed p95 and p99 - 151 and
+    # 176 - into a ten-level band. It did not remove the pale patch, because
+    # that was a chroma problem, and it flattened every real highlight in the
+    # picture on the way past. The result was a dull portrait with the blob
+    # still in it.
     #
-    # A knee at 185 barely moved it and it still landed on the palette's
-    # whitest entry, which is why it read as a flat white shape stuck to the
-    # jaw. Coming down to the p90 with a hard ratio pulls 226 to about 158,
-    # close enough to skin that the quantiser grades into it instead of
-    # spending an entry on a highlight that carries no detail anyway.
+    # A gentle knee near the top of the range is enough to stop the very
+    # brightest pixels clipping to the palette's white entry.
     a2 = np.asarray(out).astype(np.float32)
     subject = np.asarray(mask).astype(bool)
-    knee = float(np.percentile(a2.mean(2)[subject], 90))
+    knee = float(np.percentile(a2.mean(2)[subject], 99))
     over = np.clip(a2 - knee, 0, None)
-    a2 = np.minimum(a2, knee) + over * 0.28
+    a2 = np.minimum(a2, knee) + over * 0.7
     out = Image.fromarray(np.clip(a2, 0, 255).astype(np.uint8))
-    print(f"  highlight knee {knee:.0f}")
 
-    out = ImageEnhance.Contrast(out).enhance(1.12)
+    # Lift it. The gamma and autocontrast above are set to protect the sky,
+    # which is now gone, so the subject alone can carry more brightness.
+    out = ImageEnhance.Brightness(out).enhance(1.18)
+    out = ImageEnhance.Contrast(out).enhance(1.15)
+    out = ImageEnhance.Color(out).enhance(1.10)
     out.save(out_path)
     covered = 100 * bg.mean()
     print(f"{out_path}  background {covered:.0f}% of frame")
