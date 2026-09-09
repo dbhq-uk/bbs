@@ -12,6 +12,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# cargo and wasm-pack live in ~/.cargo/bin, which a non-login shell does not
+# have on PATH.
+export PATH="$HOME/.cargo/bin:$PATH"
+
 : "${CLOUDFLARE_API_TOKEN:?source ~/.dbhq/env.sh first}"
 : "${CLOUDFLARE_ZONE_ID:?source ~/.dbhq/env.sh first}"
 

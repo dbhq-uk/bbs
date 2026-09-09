@@ -65,6 +65,14 @@
       }
     </script>
 
+    <!--
+      Google Analytics 4 with Consent Mode v2, the same pattern as dbhq.uk.
+      Denied by default; GA loads only after the visitor accepts, so nothing
+      is set and no request is made until then. Only fires on the live host,
+      never on localhost or workers.dev.
+    -->
+    <script src="/analytics.js"></script>
+
     <style>
       html, body { margin: 0; background: #000; color: #aaa; }
       body { font: 16px/1.6 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
@@ -76,11 +84,45 @@
       main h1 { font-size: 1.3rem; }
       main a { color: #55ffff; }
       main hr { border: 0; border-top: 1px solid #333; margin: 2.5rem 0; }
+
+      /* The consent prompt is styled as a board panel rather than a modern
+         cookie bar, but it stays a native <dialog>: showModal() gives focus
+         move-in, a focus trap, Escape and focus return for free. */
+      .consent {
+        max-width: 52ch; padding: 1.2rem 1.4rem; color: #aaa;
+        background: #000; border: 1px solid #55ffff;
+        font: 14px/1.6 ui-monospace, Menlo, Consolas, monospace;
+      }
+      .consent[open] { display: flex; flex-direction: column; gap: 1rem; }
+      .consent::backdrop { background: rgba(0, 0, 0, .72); }
+      .consent h2 { margin: 0; color: #55ffff; font-size: .95rem; letter-spacing: .05em; }
+      .consent p { margin: 0; }
+      .consent-actions { display: flex; gap: .75rem; justify-content: flex-end; }
+      .consent button {
+        font: inherit; padding: .45em 1.2em; cursor: pointer;
+        background: #000; color: #aaa; border: 1px solid #555;
+      }
+      .consent button[data-consent-accept] { color: #000; background: #ffff55; border-color: #ffff55; }
     </style>
   </head>
   <body>
     <div id="board"><canvas id="screen"></canvas></div>
     <div id="turnstile"></div>
+
+    <dialog class="consent" data-consent aria-label="Cookie consent">
+      <h2>ANALYTICS</h2>
+      <p>
+        The sysop would like to know how many callers there are, using Google
+        Analytics. Cookies are only set if you accept, and the board works
+        exactly the same either way.
+      </p>
+      <div class="consent-actions">
+        <button type="button" data-consent-decline>Decline</button>
+        <button type="button" data-consent-accept autofocus>Accept</button>
+      </div>
+    </dialog>
+
+    <script src="/consent.js"></script>
 
     <main>
       <h1>The world wide web, as a bulletin board</h1>
