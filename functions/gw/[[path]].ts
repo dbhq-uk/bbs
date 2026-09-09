@@ -2,7 +2,12 @@ import { checkRequest } from "../_lib/guard";
 import { safeFetch, validateTarget } from "../_lib/fetchsafe";
 import { spend, type QuotaEnv } from "../_lib/quota";
 import { siteMatches, sites, type DbEnv, type Site } from "../_lib/db";
-import { read as readSession, type Session, type SessionEnv } from "../_lib/session";
+import {
+  allowanceFor,
+  read as readSession,
+  type Session,
+  type SessionEnv,
+} from "../_lib/session";
 import { json } from "../_lib/http";
 
 type Env = QuotaEnv & SessionEnv & DbEnv & { KILL_SWITCH?: string };
@@ -52,7 +57,15 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     return json({ error: allowed.reason, sl: session?.sl ?? null }, 403);
   }
 
-  const allowance = await spend(env, token, ip, target.url.hostname);
+  // The budget follows the level, so a guest is not silently handed the
+  // member's. session is non-null here - mayFetch refused above if not.
+  const allowance = await spend(
+    env,
+    token,
+    ip,
+    target.url.hostname,
+    allowanceFor(session!.sl),
+  );
   if (!allowance.ok) return json({ error: allowance.reason }, 429);
 
   const result = await safeFetch(body.url);

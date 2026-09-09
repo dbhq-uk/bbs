@@ -1,10 +1,15 @@
 import { checkRequest } from "./_lib/guard";
-import { ALLOWANCE, mintSession } from "./_lib/quota";
+import { json } from "./_lib/http";
+import { ALLOWANCE } from "./_lib/quota";
+import { allowanceFor, mint, SESSION_MINUTES, type SessionEnv } from "./_lib/session";
 
-type Env = {
-  SESSION_SECRET: string;
+type Env = SessionEnv & {
   TURNSTILE_SECRET: string;
 };
+
+/// The security level of an unauthenticated caller. Matches the GUEST
+/// level in the core's access model, and mint() applies it.
+const GUEST_SL = 10;
 
 /// Exchanges a Turnstile token for a session. One challenge per session,
 /// not per request. Turnstile is free with unlimited verifications.
@@ -45,22 +50,24 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     }
   }
 
+  // A REAL guest session, not a bare signed token.
+  //
+  // mint() writes the `sess:<sub>` record the gateway reads to learn the
+  // caller's level and flags. Signing a token without it produced one that
+  // verified fine and was then refused at the gate as `no_session`, which
+  // is what shipped and what closed the guest tier in production.
   return json({
-    session: await mintSession(env.SESSION_SECRET),
-    allowance: verified
-      ? ALLOWANCE
-      : { ...ALLOWANCE, requestsPerSession: 40, requestsPerMinute: 10 },
-    tier: verified ? "verified" : "guest",
+    session: await mint(env, null),
+    allowance: {
+      ...ALLOWANCE,
+      requestsPerSession: allowanceFor(GUEST_SL),
+      sessionMinutes: SESSION_MINUTES,
+    },
+    tier: "guest",
+    // Reported, not spent. Spec 2 makes the guest tier uniform, so a solved
+    // challenge buys no extra allowance today; it stays here because it is
+    // the only Sybil signal the board has and the next tier will want it.
+    verified,
   });
 };
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: {
-      "content-type": "application/json",
-      "x-content-type-options": "nosniff",
-      // No Access-Control-Allow-Origin, deliberately. See guard.ts.
-    },
-  });
-}

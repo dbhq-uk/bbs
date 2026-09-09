@@ -121,11 +121,17 @@ async function limited(
 /// Per-session limiting cannot stand alone: the Sybil cost of a fresh
 /// session is one Turnstile solve, so an attacker discards identities
 /// freely. The IP, target and global layers are what bound the damage.
+/// `cap` is the caller's per-session request budget, which varies by
+/// security level - see allowanceFor() in session.ts. It is a parameter
+/// rather than a constant because a guest and a member get different
+/// budgets, and reading the constant here would silently give every guest
+/// the member's.
 export async function spend(
   env: QuotaEnv,
   token: string | null,
   ip: string,
   targetHost: string,
+  cap: number = ALLOWANCE.requestsPerSession,
 ): Promise<SpendResult> {
   if (!token) return { ok: false, reason: "no session" };
 
@@ -154,14 +160,14 @@ export async function spend(
 
   const sessionKey = `s:${sub}`;
   const used = Number((await env.QUOTA.get(sessionKey)) ?? "0");
-  if (used >= ALLOWANCE.requestsPerSession) return { ok: false, reason: "session spent" };
+  if (used >= cap) return { ok: false, reason: "session spent" };
   await env.QUOTA.put(sessionKey, String(used + 1), {
     expirationTtl: ALLOWANCE.sessionMinutes * 60,
   });
 
   return {
     ok: true,
-    remaining: ALLOWANCE.requestsPerSession - used - 1,
+    remaining: cap - used - 1,
     minutesLeft: Math.max(0, Math.round((v.claims.exp - now) / 60_000)),
   };
 }
@@ -173,10 +179,19 @@ function ipPrefix(ip: string): string {
   return ip.split(".").slice(0, 3).join(".");
 }
 
-export async function mintSession(secret: string): Promise<string> {
-  return signToken(secret, {
-    sub: crypto.randomUUID(),
-    exp: Date.now() + ALLOWANCE.sessionMinutes * 60_000,
-    n: 0,
-  });
-}
+/// There is deliberately no mintSession() here.
+///
+/// One used to exist, and it signed a valid token that the gateway then
+/// refused. A token is only half a session: read() in session.ts also
+/// needs the `sess:<sub>` record in KV that carries the level and flags,
+/// and this function never wrote one. So /session handed every guest a
+/// token that looked right, verified correctly, and produced `no_session`
+/// on the first fetch - the whole guest tier was shut, in production,
+/// while every test passed.
+///
+/// It survived because it sat next to session.ts's mint() under an almost
+/// identical name, so the wrong one was easy to import and impossible to
+/// tell apart at the call site. Deleting it is the fix; leaving a
+/// same-shaped alternative in the codebase is what caused this.
+///
+/// Mint sessions with mint() from session.ts. It writes both halves.
