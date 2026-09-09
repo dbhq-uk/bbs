@@ -9,6 +9,7 @@ use wasm_bindgen::prelude::*;
 
 pub mod access;
 pub mod ansi;
+pub mod ansi_art;
 pub mod chrome;
 pub mod colour;
 pub mod doc;
@@ -130,6 +131,50 @@ pub fn render_document(raw_json: &str, cols: u16, rows: u16) -> Result<JsValue, 
 }
 
 /// Quantises decoded RGBA pixels to a screen of CP437 cells.
+/// Decodes a `.ANS` file into pages of screens.
+///
+/// Art is drawn for 80 columns and is usually taller than a terminal, so
+/// it is returned split into screenfuls the reader pages through, the same
+/// way a board showed it.
+#[wasm_bindgen]
+pub fn render_ansi_art(bytes: &[u8], rows: u16) -> Result<JsValue, JsValue> {
+    let full = ansi_art::decode(bytes);
+    let sauce = ansi_art::sauce(bytes);
+
+    let mut pages: Vec<screen::Screen> = vec![];
+    let mut y = 0;
+    while y < full.h {
+        let take = rows.min(full.h - y);
+        let mut page = screen::Screen::new(full.w, rows);
+        for row in 0..take {
+            for x in 0..full.w {
+                page.set(x, row, full.at(x, y + row));
+            }
+        }
+        pages.push(page);
+        y += take;
+    }
+    if pages.is_empty() {
+        pages.push(screen::Screen::new(ansi_art::ART_COLS, rows));
+    }
+
+    let result = ArtResult {
+        pages,
+        title: sauce.as_ref().map(|s| s.title.clone()).unwrap_or_default(),
+        author: sauce.as_ref().map(|s| s.author.clone()).unwrap_or_default(),
+        group: sauce.as_ref().map(|s| s.group.clone()).unwrap_or_default(),
+    };
+    serde_wasm_bindgen::to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+#[derive(Serialize)]
+struct ArtResult {
+    pages: Vec<screen::Screen>,
+    title: String,
+    author: String,
+    group: String,
+}
+
 #[wasm_bindgen]
 pub fn render_image(
     rgba: &[u8],

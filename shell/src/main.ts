@@ -1,4 +1,4 @@
-import init, { font_bytes, render_art, render_document, render_image, render_lines, version }
+import init, { font_bytes, render_ansi_art, render_art, render_document, render_image, render_lines, version }
   from "bbs-core";
 import { Terminal, COLS, ROWS, type Screen } from "./terminal";
 import { onKey } from "./keyboard";
@@ -30,7 +30,7 @@ let input = "";
 let status = "";
 let form: Form | null = null;
 
-const wasm = { render_document, render_image };
+const wasm = { render_document, render_image, render_ansi_art };
 
 async function boot() {
   await init();

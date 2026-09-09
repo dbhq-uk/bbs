@@ -7,6 +7,33 @@ export const MAX_BYTES = 3 * 1024 * 1024;
 export const MAX_REDIRECTS = 5;
 export const TIMEOUT_MS = 10_000;
 
+/// The board's own type for CP437 art. Not a registered media type - it is
+/// invented here so the shell can tell art apart from prose and hand it to
+/// the ANSI decoder rather than the HTML projection.
+export const ANSI_TYPE = "text/x-ansi";
+
+/// Art file extensions, matched only when the server declares NO type.
+///
+/// The ANSI Art Archive is on the board's curated list and serves every
+/// .ans with no content-type at all, so the relay refused all of them and a
+/// board built to render ANSI could not show a single piece of ANSI art.
+///
+/// Deliberately narrow: this is a fallback for a MISSING header, never an
+/// override of one the server sent. A server that says `text/html` is
+/// believed even if the path ends in .ans, so this cannot be used to smuggle
+/// a disallowed type past the allowlist by renaming a path.
+const ART_EXTENSIONS = [".ans", ".asc", ".nfo", ".diz"];
+
+export function artTypeFor(url: string): string {
+  let path: string;
+  try {
+    path = new URL(url).pathname.toLowerCase();
+  } catch {
+    return "";
+  }
+  return ART_EXTENSIONS.some((e) => path.endsWith(e)) ? ANSI_TYPE : "";
+}
+
 /// What the relay will hand back. Everything else is refused before a byte
 /// reaches the caller.
 ///
@@ -19,6 +46,7 @@ const ALLOWED_TYPES = [
   "text/html", "text/plain", "application/xhtml+xml", "application/xml", "text/xml",
   "application/json",
   "image/jpeg", "image/png", "image/gif", "image/webp", "image/avif",
+  ANSI_TYPE,
 ];
 
 /// Blocks private, loopback, link-local and unspecified address literals.
@@ -125,11 +153,14 @@ export async function safeFetch(raw: string): Promise<FetchResult> {
       return { ok: false, reason: `upstream ${res.status}` };
     }
 
-    const contentType = (res.headers.get("content-type") ?? "")
+    const declaredType = (res.headers.get("content-type") ?? "")
       .split(";")[0].trim().toLowerCase();
+    // ANSI art predates content types and the archives still serve it
+    // without one, so the extension is the only signal there is.
+    const contentType = declaredType || artTypeFor(current);
     if (!ALLOWED_TYPES.includes(contentType)) {
       clearTimeout(timer);
-      return { ok: false, reason: `content type ${contentType || "unknown"}` };
+      return { ok: false, reason: `content type ${declaredType || "unknown"}` };
     }
 
     // Declared length first, then enforced again while reading, because a

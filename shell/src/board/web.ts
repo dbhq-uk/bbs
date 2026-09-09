@@ -28,11 +28,42 @@ type Wasm = {
     maxRows: number,
     mono: boolean,
   ) => unknown;
+  render_ansi_art: (
+    bytes: Uint8Array,
+    rows: number,
+  ) => unknown;
 };
 
 export async function openUrl(url: string, wasm: Wasm): Promise<WebResult> {
   const got = await gwFetch(url);
   if (!got.ok) return { ok: false, message: gatewayMessage(got.reason) };
+
+  // Real ANSI art, drawn for an 80-column screen. It goes to the decoder
+  // rather than the HTML projection: these files ARE screens already, and
+  // projecting them would be like running a photograph through a spell
+  // checker.
+  if (got.contentType === "text/x-ansi") {
+    const art = wasm.render_ansi_art(new Uint8Array(got.bytes), 24) as {
+      pages: Screen[];
+      title: string;
+      author: string;
+      group: string;
+    };
+    // SAUCE is how the scene credited itself, and showing it is the least
+    // the board can do when displaying someone else's work.
+    const credit = [art.title, art.author && `by ${art.author}`, art.group]
+      .filter(Boolean)
+      .join("  ");
+    return {
+      ok: true,
+      title: credit || url,
+      finalUrl: got.finalUrl,
+      pages: art.pages,
+      links: [],
+      images: [],
+      meter: got.meter,
+    };
+  }
 
   if (got.contentType.startsWith("image/")) {
     const { rgba, w, h } = await decodeToRgba(got.bytes);

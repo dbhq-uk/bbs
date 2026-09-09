@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 import { checkRequest } from "../functions/_lib/guard";
 import {
+  ANSI_TYPE,
+  artTypeFor,
   MAX_BYTES,
   MAX_REDIRECTS,
   safeFetch,
@@ -238,5 +241,47 @@ describe("session tokens", () => {
   it("decodes claims without verifying, for the status line", () => {
     const c = decodeToken("x." + btoa('{"sub":"s","exp":123,"n":5}') + ".y");
     expect(c?.n).toBe(5);
+  });
+});
+
+describe("ANSI art files", () => {
+  it("recognises art extensions", () => {
+    for (const u of [
+      "http://artscene.textfiles.com/ansi/bbs/1014.ans",
+      "http://x.test/a.ASC",
+      "http://x.test/deep/path/file.nfo",
+      "http://x.test/file.diz",
+    ]) {
+      expect(artTypeFor(u), u).toBe(ANSI_TYPE);
+    }
+  });
+
+  it("ignores anything that is not art", () => {
+    for (const u of [
+      "http://x.test/index.html",
+      "http://x.test/a.ans.html",
+      "http://x.test/ans",
+      "not a url",
+      "",
+    ]) {
+      expect(artTypeFor(u), u).toBe("");
+    }
+  });
+
+  it("looks at the path, not the query, so ?x=.ans proves nothing", () => {
+    expect(artTypeFor("http://x.test/page.html?download=art.ans")).toBe("");
+  });
+
+  it("is a fallback for a missing type, never an override of a real one", () => {
+    // This is the security property. The extension is only consulted when
+    // the server declares NOTHING; a server that says text/html is believed
+    // even at an .ans path. Otherwise renaming a path would smuggle a
+    // disallowed type past the allowlist.
+    const src = readFileSync(
+      new URL("../functions/_lib/fetchsafe.ts", import.meta.url).pathname,
+      "utf8",
+    );
+    expect(src).toContain("declaredType || artTypeFor(current)");
+    expect(src).not.toContain("artTypeFor(current) || declaredType");
   });
 });

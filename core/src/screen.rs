@@ -1,8 +1,14 @@
 use serde::{Deserialize, Serialize};
 
 /// The 16-colour ANSI palette, which is what a board actually had.
-/// Index order is the standard IRGB order: the low 8 are normal, the high 8
-/// are bright.
+///
+/// Index order is ANSI/SGR order - black, red, green, yellow, blue,
+/// magenta, cyan, grey - with the high 8 the bright versions. It is NOT the
+/// IRGB order the VGA hardware used, where blue is 1 and red is 4. The
+/// distinction matters: ansi.rs encodes as `30 + index` and ansi_art.rs
+/// decodes as `code - 30`, both of which are only correct because of it.
+/// This comment previously claimed IRGB, and that cost a red/blue swap
+/// across every decoded piece of art before the tests caught it.
 ///
 /// `serde(into/from = "u8")` is load-bearing, not decoration. A plain derive
 /// on a fieldless enum serialises the VARIANT NAME - the shell would receive
