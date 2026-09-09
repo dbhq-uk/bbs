@@ -46,6 +46,15 @@ pub fn font_bytes() -> Vec<u8> {
     font::FONT.to_vec()
 }
 
+/// The font for a given cell height: 16 for 80x25, 8 for 80x50.
+///
+/// Both come from here rather than the shell shipping its own copy, so the
+/// glyphs the quantiser matched against are exactly the glyphs drawn.
+#[wasm_bindgen]
+pub fn font_bytes_for(cell_h: u32) -> Vec<u8> {
+    font::font_for(cell_h).to_vec()
+}
+
 #[derive(Serialize)]
 struct DocumentResult {
     title: String,
@@ -177,6 +186,7 @@ struct ArtResult {
 }
 
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)]
 pub fn render_image(
     rgba: &[u8],
     w: u32,
@@ -184,15 +194,44 @@ pub fn render_image(
     cols: u16,
     max_rows: u16,
     monochrome: bool,
+    cell_h: u32,
+    auto_palette: bool,
+    art_font: bool,
 ) -> Result<JsValue, JsValue> {
     let opts = image::Options {
         cols,
         max_rows,
         monochrome,
+        cell_h,
+        art_font,
+        glyphs: if art_font {
+            image::GlyphSet::Art
+        } else {
+            image::GlyphSet::Blocks
+        },
+        palette: if auto_palette {
+            image::PaletteMode::Auto
+        } else {
+            image::PaletteMode::Dos
+        },
         ..Default::default()
     };
-    let screen = image::quantise_with(rgba, w, h, opts);
-    serde_wasm_bindgen::to_value(&screen).map_err(|e| JsValue::from_str(&e.to_string()))
+    let q = image::quantise_full(rgba, w, h, opts);
+    // The palette goes back with the screen. Under Auto the cell values are
+    // indices into sixteen colours that exist only for this image, so a
+    // caller drawing the screen with the DOS palette would show something
+    // quite unlike what was measured.
+    let result = ImageResult {
+        screen: q.screen,
+        palette: q.palette.iter().map(|&(r, g, b)| [r, g, b]).collect(),
+    };
+    serde_wasm_bindgen::to_value(&result).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+#[derive(Serialize)]
+struct ImageResult {
+    screen: screen::Screen,
+    palette: Vec<[u8; 3]>,
 }
 
 /// Lays out plain text lines as a screen, with an optional colour per line.

@@ -226,9 +226,66 @@ def build(psf, H, name):
               + " ".join(f"{c:#04x}" for c in missing))
 
 
+# THE ART FONT, and why it is not cheating.
+#
+# CP437 offers exactly three shade densities - 25%, 50% and 75% - so with
+# space and the full block the quantiser has a five-rung tonal ladder to
+# represent a continuous image on. That is the coarsest part of the whole
+# pipeline.
+#
+# XBIN's custom-font feature exists for precisely this, and scene artists
+# used it. A photograph contains no letters, so in an ART font the alphabet
+# slots are free, and filling them with intermediate densities gives a much
+# finer ladder at no cost to anything the quantiser will ever need.
+#
+# The patterns are FIXED per glyph, not indexed by cell position. A
+# position-indexed dither was tried in this codebase before and produced
+# visible checkerboarding, because neighbouring cells got different phases
+# of the same pattern. These behave like the stock shades: one bitmap, used
+# wherever it fits.
+ART_SLOTS = list(range(0x41, 0x51))          # A-P, replaced in art mode only
+
+# Bayer 4x4, the classic ordered-dither matrix.
+BAYER4 = [
+    [0, 8, 2, 10],
+    [12, 4, 14, 6],
+    [3, 11, 1, 9],
+    [15, 7, 13, 5],
+]
+
+
+def shade(level, H):
+    """A dither pattern covering `level`/16 of the cell."""
+    rows = []
+    for y in range(H):
+        bits = 0
+        for x in range(W):
+            if BAYER4[y % 4][x % 4] < level:
+                bits |= 0x80 >> x
+        rows.append(bits)
+    return rows
+
+
+def build_art(base_name, H, out_name):
+    """The normal font with a finer shade ramp in the alphabet slots."""
+    data = bytearray((Path(__file__).parent / base_name).read_bytes())
+    # Sixteen rungs from nearly-empty to nearly-full. The stock 4, 8 and 12
+    # duplicate the built-in shades, which is harmless: the quantiser drops
+    # glyphs whose bitmap it has already seen.
+    for i, code in enumerate(ART_SLOTS):
+        level = i + 1                        # 1..16 sixteenths
+        rows = shade(level, H)
+        data[code * H : (code + 1) * H] = bytes(rows)
+    path = Path(__file__).parent / out_name
+    path.write_bytes(bytes(data))
+    print(f"wrote {path} ({len(data)} bytes, {len(ART_SLOTS)} extra shades)")
+
+
 def main():
     for psf, H, name in BUILDS:
         build(psf, H, name)
+    build_art("cp437-8x16.bin", 16, "cp437-art-8x16.bin")
+    build_art("cp437-8x8.bin", 8, "cp437-art-8x8.bin")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,20 @@ pub static FONT: &[u8; 4096] = include_bytes!("../assets/cp437-8x16.bin");
 /// rows - which is exactly what a VGA card did when it switched modes.
 pub static FONT_8X8: &[u8; 2048] = include_bytes!("../assets/cp437-8x8.bin");
 
+/// The ART fonts: the same glyphs, but with the alphabet slots replaced by
+/// a sixteen-rung shade ramp.
+///
+/// CP437 gives the quantiser only three shade densities, so with space and
+/// the full block it has a five-rung tonal ladder to represent a continuous
+/// image on - the coarsest link in the pipeline. XBIN's custom-font feature
+/// exists for exactly this, and a photograph contains no letters, so those
+/// slots are free.
+pub static ART_FONT_8X16: &[u8; 4096] = include_bytes!("../assets/cp437-art-8x16.bin");
+pub static ART_FONT_8X8: &[u8; 2048] = include_bytes!("../assets/cp437-art-8x8.bin");
+
+/// Slots carrying the extra ramp. Must match ART_SLOTS in gen_font.py.
+pub const ART_SHADES: std::ops::RangeInclusive<u8> = 0x41..=0x50;
+
 /// The font for a given cell height. 8 and 16 are the two real VGA text
 /// modes; anything else falls back to 8x16 rather than inventing a font.
 pub fn font_for(cell_h: u32) -> &'static [u8] {
@@ -17,12 +31,26 @@ pub fn font_for(cell_h: u32) -> &'static [u8] {
     }
 }
 
+/// As font_for, but the art variant with the finer shade ramp.
+pub fn art_font_for(cell_h: u32) -> &'static [u8] {
+    if cell_h == 8 {
+        ART_FONT_8X8.as_slice()
+    } else {
+        ART_FONT_8X16.as_slice()
+    }
+}
+
 /// The glyph mask at a given cell height, packed from the top so bit 127 is
 /// always the top-left pixel regardless of height. An 8-row glyph therefore
 /// occupies bits 127..64 and leaves the rest clear, which keeps the XOR and
 /// popcount comparison in choose_glyph identical for both modes.
 pub fn glyph_mask_h(code: u8, cell_h: u32) -> u128 {
-    let font = font_for(cell_h);
+    glyph_mask_in(font_for(cell_h), code, cell_h)
+}
+
+/// The mask from a specific font, so the art font can be searched without
+/// swapping the one the board draws text with.
+pub fn glyph_mask_in(font: &[u8], code: u8, cell_h: u32) -> u128 {
     let h = cell_h as usize;
     let start = (code as usize) * h;
     let mut m: u128 = 0;

@@ -122,3 +122,81 @@ fn a_blank_cell_stays_blank() {
         );
     }
 }
+
+/// The art font's finer shade ramp.
+///
+/// CP437 offers three shade densities, so with space and the full block the
+/// quantiser has a five-rung ladder to represent continuous tone on - the
+/// coarsest link in the pipeline. XBIN's custom-font feature exists for
+/// this, and a photograph contains no letters, so the alphabet slots are
+/// free.
+#[test]
+fn the_art_font_ramp_increases_monotonically() {
+    let mut last = 0u32;
+    for code in bbs_core::font::ART_SHADES {
+        let n = bbs_core::font::glyph_mask_in(bbs_core::font::ART_FONT_8X16, code, 16).count_ones();
+        assert!(
+            n >= last,
+            "rung {code:#04x} covers {n} pixels, less than the previous {last}",
+        );
+        last = n;
+    }
+    assert!(
+        last > 100,
+        "the ramp should reach near-full coverage, got {last}"
+    );
+}
+
+#[test]
+fn the_art_font_only_changes_the_alphabet_slots() {
+    // Everything the board draws text with must be untouched, or switching
+    // to the art font for an image would change the letters too.
+    for code in 0u8..=255 {
+        if bbs_core::font::ART_SHADES.contains(&code) {
+            continue;
+        }
+        let plain = &bbs_core::font::FONT[code as usize * 16..(code as usize + 1) * 16];
+        let art = &bbs_core::font::ART_FONT_8X16[code as usize * 16..(code as usize + 1) * 16];
+        assert_eq!(plain, art, "byte {code:#04x} differs outside the ramp");
+    }
+}
+
+#[test]
+fn the_art_ramp_is_finer_than_cp437_alone() {
+    // The point of the whole exercise: more distinct coverage levels.
+    let levels = |font: &[u8], codes: Vec<u8>| {
+        let mut v: Vec<u32> = codes
+            .into_iter()
+            .map(|c| bbs_core::font::glyph_mask_in(font, c, 16).count_ones())
+            .collect();
+        v.sort_unstable();
+        v.dedup();
+        v.len()
+    };
+    let stock = levels(
+        bbs_core::font::FONT.as_slice(),
+        vec![0x20, 0xB0, 0xB1, 0xB2, 0xDB],
+    );
+    let art = levels(
+        bbs_core::font::ART_FONT_8X16.as_slice(),
+        std::iter::once(0x20)
+            .chain(bbs_core::font::ART_SHADES)
+            .chain([0xB0, 0xB1, 0xB2, 0xDB])
+            .collect(),
+    );
+    assert!(
+        art > stock * 2,
+        "art ramp has {art} levels, stock has {stock}"
+    );
+}
+
+#[test]
+fn both_cell_heights_have_the_ramp() {
+    for (font, h) in [
+        (bbs_core::font::ART_FONT_8X16.as_slice(), 16u32),
+        (bbs_core::font::ART_FONT_8X8.as_slice(), 8u32),
+    ] {
+        let full = bbs_core::font::glyph_mask_in(font, 0x50, h).count_ones();
+        assert!(full > 0, "the {h}-row art font has an empty top rung");
+    }
+}

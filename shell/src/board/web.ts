@@ -12,6 +12,10 @@ export type WebResult =
       /// resolved against this, not against what the reader typed.
       finalUrl: string;
       pages: Screen[];
+      /// Present only for images quantised with their own sixteen colours.
+      /// The terminal must adopt it before drawing, because the cell values
+      /// are indices into THIS palette, not the DOS one.
+      palette?: [number, number, number][];
       links: { index: number; href: string }[];
       images: { index: number; src: string; alt: string }[];
       meter: Meter;
@@ -27,6 +31,9 @@ type Wasm = {
     cols: number,
     maxRows: number,
     mono: boolean,
+    cellH: number,
+    autoPalette: boolean,
+    artFont: boolean,
   ) => unknown;
   render_ansi_art: (
     bytes: Uint8Array,
@@ -67,12 +74,19 @@ export async function openUrl(url: string, wasm: Wasm): Promise<WebResult> {
 
   if (got.contentType.startsWith("image/")) {
     const { rgba, w, h } = await decodeToRgba(got.bytes);
-    const screen = wasm.render_image(rgba, w, h, 80, 24, false) as Screen;
+    // Sixteen colours chosen for this picture, snapped to the VGA DAC.
+    // The palette comes back with the screen because the cell values are
+    // indices into it - see PaletteMode::Auto in the core.
+    const img = wasm.render_image(rgba, w, h, 80, 24, false, 16, true, true) as {
+      screen: Screen;
+      palette: [number, number, number][];
+    };
     return {
       ok: true,
       title: url,
       finalUrl: got.finalUrl,
-      pages: [screen],
+      pages: [img.screen],
+      palette: img.palette,
       links: [],
       images: [],
       meter: got.meter,
@@ -118,7 +132,11 @@ export async function fetchImage(
   if (!got.ok || !got.contentType.startsWith("image/")) return null;
   try {
     const { rgba, w, h } = await decodeToRgba(got.bytes);
-    return wasm.render_image(rgba, w, h, 80, 24, false) as Screen;
+    const img = wasm.render_image(rgba, w, h, 80, 24, false, 16, true, true) as {
+      screen: Screen;
+      palette: [number, number, number][];
+    };
+    return img.screen;
   } catch {
     return null;
   }

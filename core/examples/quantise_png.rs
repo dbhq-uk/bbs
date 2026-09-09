@@ -7,7 +7,7 @@
 //! ANSI on stdout is meaningless without them: the palette is written to
 //! stderr as `PALETTE rrggbb ...` for ansi2png.py to pick up.
 use bbs_core::ansi;
-use bbs_core::image::{quantise_full, Options, PaletteMode};
+use bbs_core::image::{quantise_full, GlyphSet, Options, PaletteMode};
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -55,12 +55,17 @@ fn main() {
             monochrome: mono,
             detail,
             cell_h: value("--cell-h").unwrap_or(16),
+            art_font: flag("--art"),
+            glyphs: if flag("--art") {
+                GlyphSet::Art
+            } else {
+                GlyphSet::Blocks
+            },
             palette: if flag("--auto-palette") {
                 PaletteMode::Auto
             } else {
                 PaletteMode::Dos
             },
-            ..Default::default()
         },
     );
 

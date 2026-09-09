@@ -1,4 +1,4 @@
-import init, { font_bytes, render_ansi_art, render_art, render_document, render_image, render_lines, version }
+import init, { font_bytes_for, render_ansi_art, render_art, render_document, render_image, render_lines, version }
   from "bbs-core";
 import { Terminal, COLS, ROWS, type Screen } from "./terminal";
 import { onKey } from "./keyboard";
@@ -37,7 +37,9 @@ async function boot() {
   console.log(`bbs core ${version()}`);
 
   const canvas = document.querySelector<HTMLCanvasElement>("#screen")!;
-  term = new Terminal(canvas, font_bytes());
+  // Both text modes' fonts, so switching to 80x50 is a font swap
+  // rather than a reload - which is what a VGA card did.
+  term = new Terminal(canvas, { 16: font_bytes_for(16), 8: font_bytes_for(8) });
   redraw();
 
   onKey(handleKey);
@@ -356,6 +358,10 @@ function authMessage(code: string): string {
 
 function redraw() {
   if (!term) return;
+  // Every screen except a quantised image is drawn in the DOS sixteen. An
+  // image carrying its own palette adopts it below; forgetting to put it
+  // back would tint the whole board with the last picture's colours.
+  term.setPalette(state.screen === "reading" ? (doc?.palette ?? null) : null);
   // Bound to a const so TypeScript can narrow it; a module-level `let` is
   // not narrowed inside the switch.
   const s = state;

@@ -24,7 +24,6 @@
 //! makes the per-candidate cost O(1), so there is no reason to restrict it.
 
 use crate::colour::{linear_to_oklab, palette_linear_of, palette_oklab_of, srgb_to_linear, Lab};
-use crate::font::glyph_mask_h;
 use crate::screen::{Cell, Colour, Screen};
 
 const CELL_W: u32 = 8;
@@ -71,6 +70,13 @@ pub struct Options {
     pub max_rows: u16,
     pub monochrome: bool,
     pub glyphs: GlyphSet,
+    /// Use the art font: the same glyphs, with the alphabet slots carrying
+    /// a sixteen-rung shade ramp instead of letters.
+    ///
+    /// CP437 offers three shade densities, so with space and the full block
+    /// the quantiser has five rungs to represent continuous tone on. This is
+    /// XBIN's custom-font feature, used for what it was invented for.
+    pub art_font: bool,
     /// Cell height in pixels: 16 for the 80x25 mode, 8 for 80x50.
     ///
     /// Halving it doubles the rows for the same picture, so it doubles the
@@ -104,13 +110,15 @@ pub enum GlyphSet {
     Blocks,
     Box,
     All,
+    /// Blocks plus the art font's sixteen-rung shade ramp. Only meaningful
+    /// with `art_font: true`, which is what puts those glyphs there.
+    Art,
 }
 
 impl GlyphSet {
     fn allows(self, code: u8) -> bool {
         match self {
             GlyphSet::All => true,
-            // Space, shades, blocks, half blocks and box drawing.
             // Space, the three shades, the full block and the four half
             // blocks. Deliberately NO box drawing: its thin strokes have
             // clustered coverage that only makes sense on a real edge, and
@@ -121,6 +129,9 @@ impl GlyphSet {
                 0x20 | 0xB0 | 0xB1 | 0xB2 | 0xDB | 0xDC | 0xDD | 0xDE | 0xDF
             ),
             GlyphSet::Box => code == 0x20 || (0xB0..=0xDF).contains(&code) || code == 0xFE,
+            GlyphSet::Art => {
+                GlyphSet::Blocks.allows(code) || crate::font::ART_SHADES.contains(&code)
+            }
         }
     }
 }
@@ -132,6 +143,7 @@ impl Default for Options {
             max_rows: 37,
             monochrome: false,
             glyphs: GlyphSet::Blocks,
+            art_font: false,
             cell_h: 16,
             palette: PaletteMode::Dos,
             detail: 1.2,
@@ -165,7 +177,13 @@ struct Tables {
 }
 
 impl Tables {
-    fn new(mono: bool, set: GlyphSet, pal: &[(u8, u8, u8); 16], cell_h: u32) -> Self {
+    fn new(
+        mono: bool,
+        set: GlyphSet,
+        pal: &[(u8, u8, u8); 16],
+        cell_h: u32,
+        art_font: bool,
+    ) -> Self {
         let pal_lin = palette_linear_of(pal);
         let pal_lab = palette_oklab_of(pal);
         let samples = (CELL_W * cell_h) as usize;
@@ -199,14 +217,21 @@ impl Tables {
         }
 
         // The whole font, minus glyphs whose coverage duplicates another's
-        // bitmap exactly - they are unreachable and only cost time.
+        // bitmap exactly - they are unreachable and only cost time. That
+        // also makes the art ramp free of duplicates: three of its sixteen
+        // rungs land exactly on the stock shades and are dropped here.
+        let font = if art_font {
+            crate::font::art_font_for(cell_h)
+        } else {
+            crate::font::font_for(cell_h)
+        };
         let mut seen = std::collections::HashSet::new();
         let mut glyphs = Vec::with_capacity(256);
         for code in 0u8..=255 {
             if !set.allows(code) {
                 continue;
             }
-            let m = glyph_mask_h(code, cell_h);
+            let m = crate::font::glyph_mask_in(font, code, cell_h);
             if seen.insert(m) {
                 glyphs.push((code, m, m.count_ones()));
             }
@@ -268,7 +293,13 @@ pub fn quantise_full(rgba: &[u8], w: u32, h: u32, opts: Options) -> Quantised {
         (r.round() as u32).clamp(1, opts.max_rows as u32)
     };
 
-    let t = Tables::new(opts.monochrome, opts.glyphs, &palette, cell_h);
+    let t = Tables::new(
+        opts.monochrome,
+        opts.glyphs,
+        &palette,
+        cell_h,
+        opts.art_font,
+    );
     let mut screen = Screen::new(cols as u16, rows as u16);
     let mut cell = [(0.0f32, 0.0f32, 0.0f32); MAX_SAMPLES];
 
