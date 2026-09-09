@@ -8,6 +8,16 @@
 // this would need script-src 'unsafe-inline', which re-opens the whole
 // class of injection the policy exists to close - a poor trade for an
 // analytics tag.
+//
+// The measurement ID is the estate-wide one, deliberately: every *.dbhq.uk
+// site reports to the single "DBHQ" stream on property 544327698. It used
+// to be G-3XEJ4F59YY, a stream of its own, which gave the board a second
+// _ga_<id> cookie on the shared .dbhq.uk parent - so a visitor arriving
+// from dbhq.uk started a fresh session here and the journey between the
+// two was lost. One stream also matters for Search Console: that link
+// binds to exactly one data stream, so a site on its own ID can never show
+// search data in GA4. Split the sites at reporting time with the Hostname
+// dimension instead. See dbhq/docs/reference/analytics.md.
 window.dataLayer = window.dataLayer || [];
 function gtag() { dataLayer.push(arguments); }
 window.gtag = gtag;
@@ -15,7 +25,7 @@ gtag("consent", "default", {
   ad_storage: "denied", analytics_storage: "denied",
   ad_user_data: "denied", ad_personalization: "denied",
 });
-var gaId = "G-3XEJ4F59YY";
+var gaId = "G-3H3NFGSX85";
 var prod = location.hostname === "bbs.dbhq.uk";
 window.__dbhqEnableGA = function () {
   if (!prod || window.__gaLoaded) return;
