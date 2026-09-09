@@ -16,7 +16,7 @@ body {
   font-size: .8rem; color: var(--dim);
 }
 header.bar { border-bottom: 1px solid var(--line); }
-footer.bar { border-top: 1px solid var(--line); }
+footer { border-top: 1px solid var(--line); flex: 0 0 auto; }
 .bar a { color: var(--cyan); text-decoration: none; }
 .bar a:hover { text-decoration: underline; }
 .bar .brand { color: var(--cyan); font-weight: 600; letter-spacing: .06em; }
@@ -24,6 +24,18 @@ footer.bar { border-top: 1px solid var(--line); }
 .bar nav a[aria-current="page"] { color: #fff; }
 .bar .tag { color: var(--dim); }
 @media (max-width: 640px) { .bar .tag { display: none; } }
+
+/* "Also from DBHQ" - the sibling cross-link block every DBHQ property
+   carries in its footer, styled to this board's own terminal chrome
+   rather than the card layout the other sites use it in. */
+.also { padding: .55rem 1rem 0; }
+.also-label { margin: 0 0 .3rem; color: var(--cyan); font-size: .78rem; letter-spacing: .03em; }
+.also-list {
+  list-style: none; margin: 0; padding: 0 0 .55rem; color: var(--dim); font-size: .78rem;
+  display: flex; flex-wrap: wrap; gap: .25rem 1.5rem;
+}
+.also-list a { color: var(--cyan); text-decoration: none; }
+.also-list a:hover { text-decoration: underline; }
 
 /* The board fills whatever is left between the two bars and never causes a
    scrollbar. min-height:0 is load-bearing: without it a flex child refuses
