@@ -28,6 +28,25 @@ OUT = Path(__file__).parent / "cp437-8x16.bin"
 
 W, H = 8, 16
 
+# CP437 0x01-0x1F are SYMBOLS, not control codes.
+#
+# Python's cp437 codec disagrees: it maps those bytes to U+0000-U+001F,
+# the actual control characters, so looking them up in a font finds
+# nothing and every one came out blank. The board's arrows, the ► used as
+# a menu pointer, the scroll triangles and the card suits were all missing
+# and nothing reported it, because the blank-glyph warning below skipped
+# everything under 0x20 as "expected".
+LOW_SYMBOLS = {
+    0x01: "\u263a", 0x02: "\u263b", 0x03: "\u2665", 0x04: "\u2666",
+    0x05: "\u2663", 0x06: "\u2660", 0x07: "\u2022", 0x08: "\u25d8",
+    0x09: "\u25cb", 0x0A: "\u25d9", 0x0B: "\u2642", 0x0C: "\u2640",
+    0x0D: "\u266a", 0x0E: "\u266b", 0x0F: "\u263c", 0x10: "\u25ba",
+    0x11: "\u25c4", 0x12: "\u2195", 0x13: "\u203c", 0x14: "\u00b6",
+    0x15: "\u00a7", 0x16: "\u25ac", 0x17: "\u21a8", 0x18: "\u2191",
+    0x19: "\u2193", 0x1A: "\u2192", 0x1B: "\u2190", 0x1C: "\u221f",
+    0x1D: "\u2194", 0x1E: "\u25b2", 0x1F: "\u25bc", 0x7F: "\u2302",
+}
+
 
 def load_psf1(path):
     """Returns {unicode_char: [16 row bytes]} from a PSF1 font."""
@@ -133,6 +152,27 @@ def geometric():
             rows = [0x00] * (mid - 1) + [0xFF, 0x00, 0xFF] + [0x00] * (H - mid - 2)
             g[code] = rows[:H]
 
+    # The console font has no glyph for these, and a board needs them:
+    # 0x10/0x11 are THE menu pointer in BBS art, and the lightbar work
+    # depends on one. Drawn geometrically so they are crisp at 8x16 rather
+    # than borrowed from whatever a substitute font happens to have.
+    def triangle(right=True):
+        rows = [0x00] * H
+        # Widest in the middle row, tapering both ways.
+        for r in range(7):
+            width = r + 1 if r < 4 else 7 - r
+            mask = 0
+            for c in range(width):
+                mask |= 0x80 >> c if right else 0x01 << c
+            rows[5 + r] = mask
+        return rows
+
+    g[0x10] = triangle(right=True)    # >
+    g[0x11] = triangle(right=False)   # <
+    g[0x16] = [0x00] * 6 + [0xFF, 0xFF] + [0x00] * 8   # thick horizontal bar
+    g[0x09] = ([0x00] * 4 + [0x3C, 0x66, 0xC3, 0xC3, 0xC3, 0xC3, 0x66, 0x3C]
+               + [0x00] * 4)                            # hollow circle
+
     _ = (VL, VR, Hz)  # kept for readability of the intent above
     return g
 
@@ -147,14 +187,19 @@ def main():
         if code in geo:
             rows = geo[code]
         else:
-            try:
-                ch = bytes([code]).decode("cp437")
-            except UnicodeDecodeError:
-                ch = None
+            if code in LOW_SYMBOLS:
+                ch = LOW_SYMBOLS[code]
+            else:
+                try:
+                    ch = bytes([code]).decode("cp437")
+                except UnicodeDecodeError:
+                    ch = None
             rows = by_char.get(ch)
             if rows is None:
                 rows = [0x00] * H
-                if code >= 0x20:
+                # 0x00 is a blank cell and 0xFF is a non-breaking space;
+                # everything else being blank is a real hole in the font.
+                if code not in (0x00, 0xFF):
                     missing.append(code)
         out.extend(bytes(rows))
 

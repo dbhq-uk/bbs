@@ -25,6 +25,12 @@ PALETTE = [
     (85, 85, 255), (255, 85, 255), (85, 255, 255), (255, 255, 255),
 ]
 
+# CP437 uses 0x01-0x1F for symbols, not control codes: arrows, suits, notes.
+# Without these the arrow keys in a menu hint render as blank, which is how
+# they were first missed.
+LOW = "\u263a\u263b\u2665\u2666\u2663\u2660\u2022\u25d8\u25cb\u25d9\u2642\u2640\u266a\u266b\u263c"
+LOW += "\u25ba\u25c4\u2195\u203c\u00b6\u00a7\u25ac\u21a8\u2191\u2193\u2192\u2190\u221f\u2194\u25b2\u25bc"
+
 # Same table as ansi::cp437_to_char, so a rendered glyph maps back to the
 # byte the core chose.
 HIGH = (
@@ -33,6 +39,7 @@ HIGH = (
     "αßΓπΣσµτΦΘΩδ∞φε∩≡±≥≤⌠⌡÷≈°∙·√ⁿ²■ "
 )
 UNI_TO_CP437 = {c: 128 + i for i, c in enumerate(HIGH)}
+UNI_TO_CP437.update({c: 1 + i for i, c in enumerate(LOW)})
 
 SGR = re.compile(r"\x1b\[([0-9;]*)m")
 

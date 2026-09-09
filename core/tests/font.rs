@@ -79,3 +79,46 @@ fn every_candidate_glyph_is_distinct() {
     masks.dedup();
     assert_eq!(masks.len(), before, "candidate glyphs must all differ");
 }
+
+/// CP437 0x01-0x1F are SYMBOLS, not control codes.
+///
+/// The generator used Python's cp437 codec, which maps those bytes to the
+/// actual control characters U+0000-U+001F, so every lookup missed and all
+/// 31 came out blank. Nothing reported it: the generator's own
+/// missing-glyph warning skipped everything under 0x20 as expected.
+///
+/// The board noticed in the obvious place - a menu hint drew `↑↓ move` as
+/// `   move`, and the ► used as a lightbar pointer was invisible.
+#[test]
+fn the_glyphs_a_board_actually_needs_are_not_blank() {
+    let font = bbs_core::font::FONT;
+    let needed = [
+        (0x10, "► the lightbar pointer"),
+        (0x11, "◄"),
+        (0x18, "↑"),
+        (0x19, "↓"),
+        (0x1A, "→"),
+        (0x1B, "←"),
+        (0x1E, "▲ scroll indicator"),
+        (0x1F, "▼ scroll indicator"),
+    ];
+    for (code, what) in needed {
+        let glyph = &font[code * 16..(code + 1) * 16];
+        assert!(
+            glyph.iter().any(|&r| r != 0),
+            "byte {code:#04x} ({what}) is blank",
+        );
+    }
+}
+
+#[test]
+fn a_blank_cell_stays_blank() {
+    // 0x20 space and 0x00 must draw nothing, or every empty cell fills in.
+    for code in [0x00usize, 0x20] {
+        let glyph = &bbs_core::font::FONT[code * 16..(code + 1) * 16];
+        assert!(
+            glyph.iter().all(|&r| r == 0),
+            "byte {code:#04x} is not blank"
+        );
+    }
+}
