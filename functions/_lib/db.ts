@@ -10,7 +10,16 @@ export type User = {
   calls: number;
 };
 
-export type Site = { id: number; name: string; url: string; sort: number };
+/// `listed` separates the two jobs this table does. Every row is reachable
+/// by a guest; only listed rows are somewhere a reader would choose to go.
+/// The board's own API feeds are reachable and unlisted - see 0002_feeds.sql.
+export type Site = {
+  id: number;
+  name: string;
+  url: string;
+  sort: number;
+  listed: number;
+};
 
 export type DbEnv = { DB: D1Database };
 
@@ -103,8 +112,18 @@ export async function recordLogon(env: DbEnv, id: string): Promise<void> {
     .run();
 }
 
+/// Everything a guest may REACH, including the board's own API feeds.
+/// This is the allowlist; use listedSites() for anything a reader sees.
 export async function sites(env: DbEnv): Promise<Site[]> {
   const r = await env.DB.prepare("SELECT * FROM sites ORDER BY sort, name").all<Site>();
+  return r.results ?? [];
+}
+
+/// Everything a guest may VISIT. A strict subset of sites().
+export async function listedSites(env: DbEnv): Promise<Site[]> {
+  const r = await env.DB.prepare(
+    "SELECT * FROM sites WHERE listed = 1 ORDER BY sort, name",
+  ).all<Site>();
   return r.results ?? [];
 }
 

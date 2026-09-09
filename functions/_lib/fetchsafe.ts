@@ -7,8 +7,17 @@ export const MAX_BYTES = 3 * 1024 * 1024;
 export const MAX_REDIRECTS = 5;
 export const TIMEOUT_MS = 10_000;
 
+/// What the relay will hand back. Everything else is refused before a byte
+/// reaches the caller.
+///
+/// application/json is here because the board's own conferences are built
+/// from JSON APIs - Hacker News, the Wikipedia query API, GitHub - and
+/// without it every one of them failed with `content type application/json`
+/// while application/xml, which is strictly more dangerous to parse, was
+/// allowed. The relay returns bytes either way; nothing here is executed.
 const ALLOWED_TYPES = [
   "text/html", "text/plain", "application/xhtml+xml", "application/xml", "text/xml",
+  "application/json",
   "image/jpeg", "image/png", "image/gif", "image/webp", "image/avif",
 ];
 

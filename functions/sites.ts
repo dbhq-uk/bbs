@@ -1,5 +1,5 @@
 import { checkRequest } from "./_lib/guard";
-import { sites, type DbEnv } from "./_lib/db";
+import { listedSites, type DbEnv } from "./_lib/db";
 import { json } from "./_lib/http";
 
 /// The curated list a guest may reach. Rows only - the core decides how a
@@ -7,5 +7,5 @@ import { json } from "./_lib/http";
 export const onRequest: PagesFunction<DbEnv> = async ({ request, env }) => {
   const guard = checkRequest(request);
   if (!guard.ok) return json({ error: guard.reason }, 403);
-  return json({ sites: await sites(env) });
+  return json({ sites: await listedSites(env) });
 };

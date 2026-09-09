@@ -4,7 +4,7 @@ import { validateRegistration } from "../functions/auth/register";
 import { allowanceFor } from "../functions/_lib/session";
 
 const sites = [
-  { id: 1, name: "Wikipedia", url: "https://en.wikipedia.org/", sort: 10 },
+  { id: 1, name: "Wikipedia", url: "https://en.wikipedia.org/", sort: 10, listed: 1 },
 ];
 
 const guest = { sub: "s", userId: null, handle: "GUEST", sl: 10, flags: "" };

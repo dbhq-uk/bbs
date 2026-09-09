@@ -71,8 +71,8 @@ describe("normalisation", () => {
 
 describe("the curated guest list", () => {
   const sites = [
-    { id: 1, name: "Wikipedia", url: "https://en.wikipedia.org/", sort: 10 },
-    { id: 2, name: "GOV.UK", url: "https://www.gov.uk/", sort: 20 },
+    { id: 1, name: "Wikipedia", url: "https://en.wikipedia.org/", sort: 10, listed: 1 },
+    { id: 2, name: "GOV.UK", url: "https://www.gov.uk/", sort: 20, listed: 1 },
   ];
 
   it("allows a listed origin and its pages", () => {
