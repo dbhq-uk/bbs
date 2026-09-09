@@ -1,12 +1,16 @@
 name: ci
 
-# `push: branches: [main]` rather than a bare `push`. On a bare `push` every
-# commit to a branch with a pull request open ran the whole suite twice - once
-# for the push and once for the pull_request - which doubled the wait and the
-# minutes for no extra signal.
+# Every push runs the suite, including on a branch with no pull request open -
+# that is how work here is actually watched, and narrowing this to main took
+# the signal away.
+#
+# The duplicate run is dropped at the job level instead. A branch in this repo
+# with a pull request open fired the whole suite twice, once for the push and
+# once for the pull_request, on identical code. Every job below is therefore
+# guarded with `IS_NOT_A_DUPLICATE`: run on a push, and run on a pull request
+# only when it comes from a fork, whose pushes this repo never sees at all.
 on:
   push:
-    branches: [main]
   pull_request:
 
 # Superseded runs on the same branch are cancelled: unlike a deploy, a half
@@ -21,6 +25,11 @@ permissions:
 jobs:
   core:
     runs-on: ubuntu-latest
+    # IS_NOT_A_DUPLICATE - see the `on:` block. A push, or a pull request
+    # from a fork.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@stable
@@ -35,6 +44,11 @@ jobs:
   # through, which is most of the surface area of this project.
   web:
     runs-on: ubuntu-latest
+    # IS_NOT_A_DUPLICATE - see the `on:` block. A push, or a pull request
+    # from a fork.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: dtolnay/rust-toolchain@stable
@@ -87,6 +101,11 @@ jobs:
   # anywhere else.
   style:
     runs-on: ubuntu-latest
+    # IS_NOT_A_DUPLICATE - see the `on:` block. A push, or a pull request
+    # from a fork.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: No em dashes or en dashes
@@ -117,6 +136,11 @@ jobs:
   # or has an advisory filed against it.
   audit:
     runs-on: ubuntu-latest
+    # IS_NOT_A_DUPLICATE - see the `on:` block. A push, or a pull request
+    # from a fork.
+    if: >-
+      github.event_name == 'push' ||
+      github.event.pull_request.head.repo.full_name != github.repository
     permissions:
       contents: read
       checks: write
