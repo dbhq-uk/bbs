@@ -12,6 +12,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolve(__dirname, "index.html"),
+        about: resolve(__dirname, "about/index.html"),
         tool: resolve(__dirname, "ascii-art-generator/index.html"),
       },
     },

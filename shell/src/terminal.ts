@@ -143,16 +143,45 @@ export class Terminal {
     // drawn on exact pixel boundaries and stay crisp.
     this.canvas.width = w * dpr;
     this.canvas.height = h * dpr;
-
-    // The CSS box is taller. This is the tube doing the stretching, which
-    // is where it happened, and `image-rendering: pixelated` keeps the
-    // scale-up hard-edged rather than blurring it.
-    this.canvas.style.width = `${w}px`;
-    this.canvas.style.height = `${Math.round(h * this.pixelAspect)}px`;
     this.canvas.style.imageRendering = "pixelated";
 
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.ctx.imageSmoothingEnabled = false;
+    this.fit();
+  }
+
+  /// Sizes the CSS box to fit whatever space the layout gives it, keeping
+  /// the aspect the mode is meant to have.
+  ///
+  /// Done in script rather than with max-width/max-height because a canvas
+  /// takes its intrinsic size from its width and height ATTRIBUTES, and
+  /// those are multiplied by devicePixelRatio here - so on a 2x display the
+  /// intrinsic size is twice what CSS should be laying out, and every
+  /// percentage rule is computed against the wrong number.
+  ///
+  /// The board fills the viewport between the header and footer and must
+  /// never scroll, so this only ever scales DOWN: a small window shrinks the
+  /// board rather than clipping it, and a large one does not blow it up past
+  /// its native size, which would only make it blurrier.
+  fit() {
+    const box = this.canvas.parentElement;
+    if (!box) return;
+    // On first load the container can still be zero-height when this runs,
+    // and scaling to that collapses the board to nothing. Wait for the next
+    // frame rather than rendering a 0x0 canvas.
+    if (box.clientHeight === 0 || box.clientWidth === 0) {
+      requestAnimationFrame(() => this.fit());
+      return;
+    }
+    const nativeW = COLS * CELL_W;
+    const nativeH = this.rows * this.cellH * this.pixelAspect;
+    const scale = Math.min(
+      1,
+      box.clientWidth / nativeW,
+      box.clientHeight / nativeH,
+    );
+    this.canvas.style.width = `${Math.floor(nativeW * scale)}px`;
+    this.canvas.style.height = `${Math.floor(nativeH * scale)}px`;
   }
 
   private rebuild() {

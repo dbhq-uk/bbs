@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>About - how the board renders the web as ANSI | bbs.dbhq.uk</title>
+    <meta
+      name="description"
+      content="How bbs.dbhq.uk turns live web pages into 16-colour CP437 text and photographs into ANSI art, entirely in your browser. Built in Rust and WebAssembly by Daniel Grimes."
+    />
+    <link rel="canonical" href="https://bbs.dbhq.uk/about/" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="bbs.dbhq.uk" />
+    <meta property="og:url" content="https://bbs.dbhq.uk/about/" />
+    <meta property="og:title" content="About bbs.dbhq.uk" />
+    <meta
+      property="og:description"
+      content="How the board turns live web pages into CP437 text and photographs into ANSI art, in your browser."
+    />
+    <meta property="og:image" content="https://bbs.dbhq.uk/dan-ansi.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "AboutPage",
+            "@id": "https://bbs.dbhq.uk/about/#page",
+            "url": "https://bbs.dbhq.uk/about/",
+            "name": "About bbs.dbhq.uk",
+            "isPartOf": { "@id": "https://bbs.dbhq.uk/#website" },
+            "about": { "@id": "https://bbs.dbhq.uk/#app" }
+          },
+          {
+            "@type": "Person",
+            "@id": "https://dbhq.uk/#person",
+            "name": "Daniel Grimes",
+            "jobTitle": "Director",
+            "url": "https://dbhq.uk/",
+            "image": "https://bbs.dbhq.uk/dan-ansi.png"
+          }
+        ]
+      }
+    </script>
+
+    <script src="/analytics.js"></script>
+    <link rel="stylesheet" href="/site.css" />
+    <style>
+      .sysop { display: flex; gap: 1.75rem; align-items: flex-start; flex-wrap: wrap; }
+      .sysop img {
+        width: 240px; image-rendering: pixelated;
+        border: 1px solid var(--line); background: #000;
+      }
+      .sysop .who { flex: 1 1 20ch; }
+      .sysop .who p:first-child { margin-top: 0; }
+      figcaption { color: var(--dim); font-size: .78rem; margin-top: .4rem; max-width: 240px; }
+    </style>
+  </head>
+  <body>
+    <header class="bar">
+      <a class="brand" href="/">DBHQ//BBS</a>
+      <span class="tag">the world wide web, as a bulletin board</span>
+      <nav>
+        <a href="/about/" aria-current="page">About</a>
+        <a href="/ascii-art-generator/">ASCII Art</a>
+        <a href="https://modem.dbhq.uk/">Modem</a>
+      </nav>
+    </header>
+
+    <main class="prose">
+      <h1>The world wide web, as a bulletin board</h1>
+      <p class="lede">
+        <strong>bbs.dbhq.uk</strong> is a bulletin board system that fronts the
+        live web. Give it an address and it fetches the page, throws away the
+        script, the tracking and the layout, and redraws what is left as
+        16-colour CP437 text on a 132-column screen, the way a board looked in
+        1992.
+      </p>
+
+      <h2>An ANSI and ASCII art generator, built in</h2>
+      <p>
+        Every photograph on a page is converted to ANSI art on the way past.
+        The converter chooses a glyph, a foreground colour and a background
+        colour for each cell together, scoring the result against the original
+        in a perceptual colour space, so a face comes out recognisable rather
+        than as a grey smear. It picks sixteen colours for each individual
+        picture from the 262,144 a VGA card could produce, which is what the
+        XBIN format was invented for in 1996.
+      </p>
+      <p>
+        The converter has
+        <a href="/ascii-art-generator/">a page of its own</a> if that is what
+        you came for: drop in a photograph and get ASCII or 16-colour ANSI art
+        back, without it being uploaded anywhere.
+      </p>
+
+      <h2>Reading the web without JavaScript</h2>
+      <p>
+        Nothing a page ships is executed. The board reads the HTML a server
+        sends, works out what it means from its landmarks and headings, and
+        throws the rest away. Pages that build themselves entirely with
+        JavaScript come back empty, which is reported honestly rather than
+        hidden:
+        <a href="https://github.com/dbhq-uk/bbs/blob/main/corpus/REPORT.md">
+          a measured corpus of fifty real pages</a>
+        records how many render readably. It is about seven in ten.
+      </p>
+
+      <h2>Classic ANSI art</h2>
+      <p>
+        The board reads <code>.ANS</code> files, so the art scene's own work
+        displays as it was drawn, including the SAUCE record naming the artist.
+        The ANSI Art Archive at textfiles.com is on the board's curated list.
+      </p>
+
+      <h2>How it is built</h2>
+      <p>
+        The renderer is Rust compiled to WebAssembly and runs entirely on your
+        machine. A small Cloudflare Worker relays page fetches, because a
+        browser cannot request another site directly; it returns bytes and
+        never decides how anything looks. The board runs at 132x50 in an 8x16
+        cell, which is VESA text mode 10Bh.
+        <a href="https://github.com/dbhq-uk/bbs">The source is on GitHub</a>.
+      </p>
+
+      <hr />
+
+      <h2>The sysop</h2>
+      <div class="sysop">
+        <figure style="margin: 0">
+          <img
+            src="/dan-ansi.png"
+            width="480"
+            height="592"
+            alt="Daniel Grimes, rendered as 16-colour ANSI art by the board's own converter"
+          />
+          <figcaption>
+            Converted by the board's own quantiser: sixteen colours chosen for
+            this picture, snapped to what a VGA card could show.
+          </figcaption>
+        </figure>
+        <div class="who">
+          <p><strong>Daniel Grimes</strong></p>
+          <p>
+            Director of DBHQ Consulting Ltd and a Fractional Engineering Lead,
+            working across defence, banking, insurance, energy, commodities,
+            healthcare and identity.
+          </p>
+          <p>
+            This board is a DBHQ experiment: a serious renderer wearing a 1992
+            costume. Its sister project is
+            <a href="https://modem.dbhq.uk/">modem.dbhq.uk</a>.
+          </p>
+          <p><a href="https://dbhq.uk/">dbhq.uk</a></p>
+        </div>
+      </div>
+    </main>
+
+    <footer class="bar">
+      <span>Rust and WebAssembly, rendered on your machine. Nothing is uploaded.</span>
+      <nav>
+        <a href="https://github.com/dbhq-uk/bbs">Source</a>
+        <a href="https://dbhq.uk/">DBHQ</a>
+      </nav>
+    </footer>
+
+    <dialog class="consent" data-consent aria-label="Cookie consent">
+      <h2>ANALYTICS</h2>
+      <p>
+        The sysop would like to know how many callers there are, using Google
+        Analytics. Cookies are only set if you accept, and the board works
+        exactly the same either way.
+      </p>
+      <div class="consent-actions">
+        <button type="button" data-consent-decline>Decline</button>
+        <button type="button" data-consent-accept autofocus>Accept</button>
+      </div>
+    </dialog>
+
+    <script src="/consent.js"></script>
+  </body>
+</html>

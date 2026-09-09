@@ -40,6 +40,13 @@ async function boot() {
   // Both text modes' fonts, so switching to 80x50 is a font swap
   // rather than a reload - which is what a VGA card did.
   term = new Terminal(canvas, { 16: font_bytes_for(16), 8: font_bytes_for(8) });
+  // The board is sized to the space between the header and footer, so a
+  // window change has to re-fit it or it either overflows and scrolls or
+  // leaves a gap.
+  window.addEventListener("resize", () => {
+    term.fit();
+    redraw();
+  });
   redraw();
 
   onKey(handleKey);

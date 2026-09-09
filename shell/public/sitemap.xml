@@ -1,19 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <!-- The board itself. One URL, because every screen is drawn to a canvas
-       and there are no other addresses to index. -->
+  <!-- The board. Every screen is drawn to a canvas, so it has no crawlable
+       prose of its own; /about/ carries that and is linked from the header
+       on every page. -->
   <url>
     <loc>https://bbs.dbhq.uk/</loc>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
-  <!-- The generator has its own URL because it has to be findable. The
-       board's keyword cluster is tiny; image-to-ASCII conversion is roughly
-       95,000 searches a month worldwide, and a page cannot rank for a thing
-       it never says in a title or a URL. -->
+  <!-- The generator has its own URL because it has to be findable.
+       Image-to-ASCII is roughly 95,000 searches a month worldwide against a
+       few hundred for the BBS terms. -->
   <url>
     <loc>https://bbs.dbhq.uk/ascii-art-generator/</loc>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://bbs.dbhq.uk/about/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
   </url>
 </urlset>

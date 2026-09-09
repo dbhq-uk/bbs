@@ -82,16 +82,21 @@
     </script>
 
     <script src="/analytics.js"></script>
+    <link rel="stylesheet" href="/site.css" />
     <link rel="stylesheet" href="/tool.css" />
   </head>
   <body>
-    <header>
-      <a class="home" href="/">bbs.dbhq.uk</a>
-      <span class="sep">/</span>
-      <span>ASCII art generator</span>
+    <header class="bar">
+      <a class="brand" href="/">DBHQ//BBS</a>
+      <span class="tag">the world wide web, as a bulletin board</span>
+      <nav>
+        <a href="/about/">About</a>
+        <a href="/ascii-art-generator/" aria-current="page">ASCII Art</a>
+        <a href="https://modem.dbhq.uk/">Modem</a>
+      </nav>
     </header>
 
-    <main>
+    <main class="prose">
       <h1>ASCII Art Generator</h1>
       <p class="lede">
         Turn a photograph into ASCII art or 16-colour ANSI art. The conversion
@@ -201,6 +206,27 @@
         converter is <a href="https://github.com/dbhq-uk/bbs">open source</a>.
       </p>
     </main>
+
+    <footer class="bar">
+      <span>Rust and WebAssembly, rendered on your machine. Nothing is uploaded.</span>
+      <nav>
+        <a href="https://github.com/dbhq-uk/bbs">Source</a>
+        <a href="https://dbhq.uk/">DBHQ</a>
+      </nav>
+    </footer>
+
+    <dialog class="consent" data-consent aria-label="Cookie consent">
+      <h2>ANALYTICS</h2>
+      <p>
+        The sysop would like to know how many callers there are, using Google
+        Analytics. Cookies are only set if you accept, and the board works
+        exactly the same either way.
+      </p>
+      <div class="consent-actions">
+        <button type="button" data-consent-decline>Decline</button>
+        <button type="button" data-consent-accept autofocus>Accept</button>
+      </div>
+    </dialog>
 
     <script src="/consent.js"></script>
     <script type="module" src="/src/tool.ts"></script>

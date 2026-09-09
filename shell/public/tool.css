@@ -3,25 +3,8 @@
    seen a BBS, so it is plain HTML with generous type rather than a canvas. */
 :root { --cyan: #55ffff; --dim: #777; --line: #333; }
 
-html, body { margin: 0; background: #000; color: #bbb; }
-body {
-  font: 16px/1.65 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
-}
 
-header {
-  padding: .9rem 1.5rem; border-bottom: 1px solid var(--line);
-  color: var(--dim); font-size: .85rem;
-}
-header .home { color: var(--cyan); text-decoration: none; }
-header .sep { margin: 0 .5rem; }
 
-main { max-width: 78ch; margin: 0 auto; padding: 2.5rem 1.5rem 6rem; }
-h1 { color: var(--cyan); font-size: 1.6rem; margin: 0 0 .5rem; }
-h2 { color: var(--cyan); font-size: 1.05rem; margin: 2.5rem 0 .6rem; letter-spacing: .03em; }
-h3 { color: #ddd; font-size: .95rem; margin: 1.4rem 0 .3rem; }
-a { color: var(--cyan); }
-.lede { color: #ddd; margin-top: 0; }
-hr { border: 0; border-top: 1px solid var(--line); margin: 3rem 0 1.5rem; }
 .foot { color: var(--dim); font-size: .9rem; }
 ul { padding-left: 1.2rem; }
 li { margin: .4rem 0; }
