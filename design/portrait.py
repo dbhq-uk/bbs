@@ -6,60 +6,62 @@ hand-edited one. Run from the repo root:
 
     python3 design/portrait.py
 
-WHY THE SUBJECT IS TRACED BY HAND.
+THE PROBLEM. The sun is directly behind his head, so it burns through beside
+the hair and along the jaw. Measured on this frame, as blue-minus-red and
+luminance:
 
-The photograph is backlit: the sun is directly behind his head, so it burns
-through beside the hair and along the jaw. Four automatic approaches were
-tried and every one failed on the same fact.
+    open sky                +91   151
+    glare wedge, jaw        +13   194    must go
+    glare streak, hair      -12   146    must go
+    backlit hair itself      ~0   150    must stay
+    cheek                   -41    91    must stay
+    dark shirt              +15    60    must stay
 
-Measured on this frame - blue minus red, and luminance:
+No threshold on colour or brightness separates those. A colour test misses
+both glare regions - one is nearly neutral, the other is WARM, on the skin
+side of any such test. A brightness test takes the glare and the backlit hair
+together, because they are the same brightness. Loosening the colour test to
+reach the wedge pulls in the shirt, which reflects skylight. Each was tried
+and each failed.
 
-    open sky              +91   151
-    glare wedge, jaw      +13   194
-    glare streak, hair    -12   146
-    backlit hair itself    ~0   150
-    cheek                 -41    91
+THE ANSWER IS NOT A BETTER THRESHOLD ON THE PIXEL. It is that the sky is a
+smooth gradient and a person is not. Fit the sky as a quadratic surface over
+the pixels that are unambiguously sky, then ask every pixel how far it sits
+from what the sky ought to be at that position:
 
-A colour threshold separates sky from skin with an enormous margin, and
-misses both glare regions: the wedge is nearly neutral and the streak is
-WARM, on the skin side of any colour test. A brightness threshold does
-catch the glare - and catches the backlit hair with it, because they are
-the same brightness. Growing the background into bright pixels removed
-every white pixel and took a notch out of the back of the head doing it.
-Loosening the colour test to reach the wedge at +13 pulled in the hair and
-the shirt, both of which reflect blue skylight.
+    sky                7.9
+    glare wedge       34.3
+    glare streak      56.6
+    cheek             83.0
+    backlit hair     118.3
 
-There is no threshold that separates them, because in this photograph they
-are not separable by colour or by brightness. So the silhouette is traced
-by hand, once. The photograph does not change, and the tracing is data
-rather than a guess that has to hold on unseen input.
+The glare is sky - blown out, but still sky, and still close to what the
+fitted surface predicts there. Hair and skin are nowhere near it. One
+threshold now separates them with room to spare, and because the mask is a
+flood fill from the frame edge the boundary is the photograph's own, following
+individual strands of hair.
+
+A hand-traced polygon was tried before this and is what NOT to do: 37 straight
+segments cannot follow hair, so it changed the shape of his head. The edge has
+to come from the picture.
 """
 
 import sys
+from collections import deque
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageOps
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
-# The region of the original the portrait is taken from.
 CROP = (190, 50, 590, 545)
 
-# The subject silhouette, in cropped coordinates, traced against a
-# coordinate grid over the photograph. Head, ear, beard and shoulders in;
-# sky and glare out.
-SUBJECT = [
-    (46, 108), (56, 74), (78, 50), (112, 32), (150, 24), (196, 22),
-    (232, 30), (262, 46), (288, 68), (304, 94), (314, 124), (319, 155),
-    (322, 190), (325, 224), (322, 258), (313, 290), (303, 324), (297, 362),
-    (299, 402), (310, 428), (336, 440), (400, 448),
-    (400, 495), (0, 495),
-    (0, 452), (38, 442), (68, 430), (88, 408), (92, 380), (78, 350),
-    (58, 318), (46, 285), (41, 250), (39, 215), (40, 180), (42, 148),
-    (44, 126),
-]
-
-# A deep navy. Bright blue competes with the subject for attention and eats
-# a palette entry the face wants; dark enough and it reads as a ground.
+# A deep navy. Bright blue competes with the subject for attention and eats a
+# palette entry the face wants; dark enough and it reads as a ground.
 BACKGROUND = (10, 16, 66)
+
+# How far from the fitted sky a pixel may sit and still count as sky. 55 falls
+# between the glare streak at 56.6 and the cheek at 83. At 65 it leaks into
+# the forehead, which is obvious the moment the mask is viewed as an overlay.
+SKY_RESIDUAL = 55.0
 
 
 def _box(x, r, axis):
@@ -71,27 +73,70 @@ def _box(x, r, axis):
     return np.moveaxis(out, 0, axis)
 
 
-def local_tone_map(img, subject, base_blur=34.0, base=0.52, detail=1.5):
+def subject_mask(a):
+    """The subject, as a boolean, by fitting the sky and flood-filling.
+
+    The fit is refined once with outliers dropped, so a bright cloud cannot
+    drag the surface toward itself and widen what counts as sky.
+    """
+    h, w, _ = a.shape
+    r, b = a[..., 0], a[..., 2]
+    ys, xs = np.mgrid[0:h, 0:w]
+    X = np.stack([np.ones_like(ys), xs, ys, xs**2, xs * ys, ys**2], -1).astype(float)
+
+    sure = (b - r) > 35
+    pred = np.zeros_like(a)
+    fit_on = sure.copy()
+    for _ in range(2):
+        for ch in range(3):
+            coef, *_ = np.linalg.lstsq(X[fit_on], a[..., ch][fit_on], rcond=None)
+            pred[..., ch] = X @ coef
+        resid = np.abs(a - pred).mean(2)
+        fit_on = sure & (resid < np.percentile(resid[sure], 90))
+
+    passable = np.abs(a - pred).mean(2) < SKY_RESIDUAL
+
+    # Only what is connected to the frame edge. Anything sky-coloured but
+    # enclosed by the subject - a catchlight in an eye - stays.
+    bg = np.zeros((h, w), bool)
+    q = deque()
+    for x in range(w):
+        for y in (0, h - 1):
+            if passable[y, x]:
+                bg[y, x] = True
+                q.append((y, x))
+    for y in range(h):
+        for x in (0, w - 1):
+            if passable[y, x]:
+                bg[y, x] = True
+                q.append((y, x))
+    while q:
+        y, x = q.popleft()
+        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            ny, nx = y + dy, x + dx
+            if 0 <= ny < h and 0 <= nx < w and passable[ny, nx] and not bg[ny, nx]:
+                bg[ny, nx] = True
+                q.append((ny, nx))
+    return ~bg
+
+
+def local_tone_map(img, subject, base_blur=34.0, base=0.68, detail=1.35):
     """Compresses large-scale brightness while keeping local detail.
 
-    THIS IS WHAT THE EAR NEEDED. It is sunlit and sits about 68 levels
-    brighter than the cheek, so under k-means it forms its own bright
-    cluster, claims its own palette entries, and renders as a flat slab. It
-    is not featureless - the folds are plainly there in the source - but
-    that structure is small compared with the ear's OFFSET from the face, so
-    every global tool missed it.
+    This is what the ear needed. It is sunlit and sits about 68 levels
+    brighter than the cheek, so under k-means it forms its own bright cluster,
+    claims its own palette entries, and renders as a flat slab. It is not
+    featureless - the folds are plainly there - but that structure is small
+    compared with the ear's OFFSET from the face, so every global tool missed
+    it.
 
-    A global highlight rolloff cannot fix it: pulling the top of the range
-    down drags the ear's detail with it and flattens real highlights
-    everywhere else, which is why an earlier version went dull with the slab
-    still in it. The quantiser's own unsharp lifts local detail but leaves
-    the offset alone, so the ear stayed a separate bright cluster - measured
-    at 13 distinct colours either way.
+    Splitting luminance into a blurred BASE and the residual DETAIL lets them
+    be treated separately: squash the base so the ear sits nearer the face,
+    lift the detail so the folds survive. Colour rides along by scaling, so
+    hue is untouched.
 
-    Splitting luminance into a blurred BASE and the residual DETAIL lets the
-    two be treated separately: squash the base so the ear sits nearer the
-    face, and lift the detail so the folds survive the squashing. Colour is
-    carried by scaling, so hue is untouched.
+    `base` is deliberately mild. An earlier 0.52 flattened the modelling of
+    the entire face to fix one ear, which is a bad trade.
     """
     a = np.asarray(img).astype(np.float32)
     lum = np.maximum(a.mean(2), 1.0)
@@ -110,29 +155,32 @@ def local_tone_map(img, subject, base_blur=34.0, base=0.52, detail=1.5):
     return Image.fromarray(np.clip(a * (out_lum / lum)[..., None], 0, 255).astype(np.uint8))
 
 
-def prepare(src_path, out_path):
+def prepare(src_path, out_path, overlay_path=None):
     src = Image.open(src_path).convert("RGB")
-    crop = src.crop(CROP)
-    crop = ImageOps.autocontrast(crop, cutoff=1)
-    # Lift the shadowed face. The gamma is generous because the sky it used
-    # to have to protect is masked out rather than tone-mapped.
+    crop = ImageOps.autocontrast(src.crop(CROP), cutoff=1)
     crop = Image.eval(crop, lambda v: int(255 * ((v / 255) ** 0.70)))
 
-    mask = Image.new("L", crop.size, 0)
-    ImageDraw.Draw(mask).polygon(SUBJECT, fill=255)
-    # Feather by a pixel so the edge does not stair-step against the ground.
-    mask = mask.filter(ImageFilter.GaussianBlur(0.8))
-    subject = np.asarray(mask) > 127
+    subject = subject_mask(np.asarray(crop).astype(float))
 
-    crop = local_tone_map(crop, subject)
-    out = Image.composite(crop, Image.new("RGB", crop.size, BACKGROUND), mask)
+    # The mask is checked as an OVERLAY on the photograph before anything is
+    # rendered. Every failed attempt at this was obvious in the mask and
+    # invisible in the output, which is where I kept looking instead.
+    if overlay_path:
+        ov = np.asarray(crop).copy()
+        ov[~subject] = (ov[~subject] * 0.25 + np.array([255, 0, 0]) * 0.75).astype(np.uint8)
+        Image.fromarray(ov).save(overlay_path)
 
-    # Compressing the base costs global contrast, so some goes back on after.
-    # This order matters: a contrast lift applied first would clip the ear
-    # structure the tone map just recovered.
-    out = ImageEnhance.Brightness(out).enhance(1.18)
-    out = ImageEnhance.Contrast(out).enhance(1.32)
-    out = ImageEnhance.Color(out).enhance(1.10)
+    m = Image.fromarray((subject * 255).astype(np.uint8)).filter(ImageFilter.MedianFilter(3))
+    m = m.filter(ImageFilter.GaussianBlur(0.6))
+
+    toned = local_tone_map(crop, subject)
+    out = Image.composite(toned, Image.new("RGB", crop.size, BACKGROUND), m)
+
+    # Contrast goes back on AFTER the tone map. The other order clips the ear
+    # structure the tone map has just recovered.
+    out = ImageEnhance.Brightness(out).enhance(1.06)
+    out = ImageEnhance.Contrast(out).enhance(1.14)
+    out = ImageEnhance.Color(out).enhance(1.06)
     out.save(out_path)
     print(f"{out_path}  subject {100 * subject.mean():.0f}% of frame")
 
@@ -141,4 +189,4 @@ if __name__ == "__main__":
     src = sys.argv[1] if len(sys.argv) > 1 else (
         "/home/devops/.paseo/worktrees/0a1k3qja/rebel-hippo/website/public/graphics/dan-square.jpg"
     )
-    prepare(src, "/tmp/dan-prepped.png")
+    prepare(src, "/tmp/dan-prepped.png", "/tmp/dan-mask-overlay.png")
