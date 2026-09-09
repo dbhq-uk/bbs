@@ -68,6 +68,14 @@ const by = (v) => rows.filter((r) => r.verdict === v);
 const readable = by("readable");
 const pct = (n) => ((n / total) * 100).toFixed(0);
 
+// A link index with no prose is still perfectly usable ON A BOARD - a
+// numbered list of links is what a BBS does. Reported separately rather
+// than folded into "readable", because quietly widening the definition of
+// success to capture more pages is how a measurement stops being one.
+const navigable = rows.filter(
+  (r) => r.verdict === "readable" || (r.verdict === "no-prose" && r.links > 0),
+);
+
 const chromes = readable.map((r) => r.chrome).sort((a, b) => a - b);
 const median = chromes.length ? chromes[Math.floor(chromes.length / 2)] : 0;
 const worst = chromes.length ? chromes[chromes.length - 1] : 0;
@@ -114,6 +122,14 @@ the corpus precisely because they are expected to fail:
 
 Both figures are given because reporting only the first understates the
 projection and only the second overstates it.
+
+**Navigable: ${navigable.length} of ${total} (${pct(navigable.length)}%)** -
+readable pages plus link indexes that carry no prose. Hacker News is the case
+this exists for: its front page has not one paragraph on it, so it is honestly
+not *readable*, but it projects to 198 numbered links, which is exactly what a
+board is for. Kept separate from the headline rather than folded into it,
+because widening the definition of success until more pages qualify is how a
+measurement stops being one.
 
 ## Chrome before the first useful line
 

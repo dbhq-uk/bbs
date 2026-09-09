@@ -389,3 +389,136 @@ fn a_list_of_plain_text_is_still_flattened() {
         }
     );
 }
+
+/// A LAYOUT table must be descended into, not tabulated.
+///
+/// The old web built whole pages out of tables, and this board exists
+/// largely to read the old web. Measured on the corpus before this was
+/// fixed: Hacker News projected to 1 block in, 1 block out, and was then
+/// classified an empty shell - because the whole page became a single
+/// Block::Table whose cell text was all that survived. textfiles.com and
+/// two forums did the same. Two of those are on the board's own curated
+/// list and Hacker News is conference 1.
+fn hn_shaped_layout_table() -> RawNode {
+    // The shape that matters: a table wrapping a table, no header cells,
+    // and the real content - links and prose - inside the cells.
+    el(
+        "body",
+        &[],
+        vec![el(
+            "table",
+            &[],
+            vec![el(
+                "tr",
+                &[],
+                vec![el(
+                    "td",
+                    &[],
+                    vec![el(
+                        "table",
+                        &[],
+                        vec![
+                            el(
+                                "tr",
+                                &[],
+                                vec![el(
+                                    "td",
+                                    &[],
+                                    vec![el(
+                                        "a",
+                                        &[("href", "https://example.com/one")],
+                                        vec![txt("The first story")],
+                                    )],
+                                )],
+                            ),
+                            el(
+                                "tr",
+                                &[],
+                                vec![el(
+                                    "td",
+                                    &[],
+                                    vec![el("p", &[], vec![txt(
+                                        "A paragraph of genuine prose that a reader would want to see on the screen.",
+                                    )])],
+                                )],
+                            ),
+                        ],
+                    )],
+                )],
+            )],
+        )],
+    )
+}
+
+#[test]
+fn a_layout_table_keeps_its_links_instead_of_being_flattened() {
+    let doc = project(&hn_shaped_layout_table());
+    assert!(
+        !doc.blocks.iter().any(|b| matches!(b, Block::Table { .. })),
+        "a nested, header-less table is layout and must not become a Table block",
+    );
+    assert!(
+        doc.blocks
+            .iter()
+            .any(|b| matches!(b, Block::Paragraph { .. })),
+        "the prose inside a layout table must survive: {:?}",
+        doc.blocks,
+    );
+}
+
+#[test]
+fn a_real_data_table_is_still_tabulated() {
+    // The guard must not throw out the thing the Table arm exists for.
+    let doc = project(&el(
+        "body",
+        &[],
+        vec![el(
+            "table",
+            &[],
+            vec![
+                el(
+                    "tr",
+                    &[],
+                    vec![
+                        el("th", &[], vec![txt("Name")]),
+                        el("th", &[], vec![txt("Value")]),
+                    ],
+                ),
+                el(
+                    "tr",
+                    &[],
+                    vec![
+                        el("td", &[], vec![txt("Alpha")]),
+                        el("td", &[], vec![txt("1")]),
+                    ],
+                ),
+            ],
+        )],
+    ));
+    assert!(
+        doc.blocks.iter().any(|b| matches!(b, Block::Table { .. })),
+        "headers plus two rows and no nesting is data: {:?}",
+        doc.blocks,
+    );
+}
+
+#[test]
+fn a_single_row_table_is_a_layout_strip() {
+    let doc = project(&el(
+        "body",
+        &[],
+        vec![el(
+            "table",
+            &[],
+            vec![el(
+                "tr",
+                &[],
+                vec![
+                    el("th", &[], vec![txt("Logo")]),
+                    el("td", &[], vec![el("p", &[], vec![txt("Tagline here")])]),
+                ],
+            )],
+        )],
+    ));
+    assert!(!doc.blocks.iter().any(|b| matches!(b, Block::Table { .. })));
+}

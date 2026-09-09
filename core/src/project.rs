@@ -111,6 +111,48 @@ fn collect_by_role<'a>(n: &'a RawNode, want: Role, out: &mut Vec<&'a RawNode>) {
     }
 }
 
+/// Whether a table is presenting DATA, or is being used for LAYOUT.
+///
+/// The old web built entire pages out of tables, and this board exists
+/// largely to read the old web. Hacker News is one table wrapping another;
+/// so is textfiles.com, and most forum software of that era. Reading those
+/// as data collapses a whole page into a single `Block::Table` whose cell
+/// text is the only thing that survives - every link, image and paragraph
+/// inside it is discarded, and the page is then classified an empty shell
+/// because the prose and link counters never see in. Measured on the
+/// corpus: Hacker News came out as 1 block in, 1 block out.
+///
+/// THE COSTS ARE NOT SYMMETRIC, which is what decides the bias here.
+/// Treating a data table as layout loses the column alignment; treating a
+/// layout table as data loses the entire page. So the test is deliberately
+/// strict, and anything unconvincing gets descended into instead.
+///
+/// This is the same mistake the list arm below already made and had fixed,
+/// for the same reason: flattening a container to its text throws away
+/// everything the container was holding.
+fn table_is_data(n: &RawNode) -> bool {
+    // A table inside a table is layout. Data does not nest like that.
+    let mut nested = vec![];
+    collect_by_role(n, Role::Table, &mut nested);
+    if !nested.is_empty() {
+        return false;
+    }
+
+    // Header cells are the strongest positive signal there is. A table with
+    // no `th` at all may still be data, but not reliably enough to justify
+    // discarding its contents on a guess.
+    let mut headers = vec![];
+    collect_by_role(n, Role::HeaderCell, &mut headers);
+    if headers.is_empty() {
+        return false;
+    }
+
+    // One row is a layout strip, not a table of anything.
+    let mut rows = vec![];
+    collect_by_role(n, Role::Row, &mut rows);
+    rows.len() >= 2
+}
+
 /// Reads a table into headers and rows. A row of only `th` cells becomes the
 /// header; every later row becomes a row of cell text.
 fn read_table(n: &RawNode) -> (Vec<String>, Vec<Vec<String>>) {
@@ -190,9 +232,14 @@ impl Walk<'_> {
                 }
                 return;
             }
-            Role::Table => {
+            Role::Table if table_is_data(n) => {
                 // Without this arm Role::Table falls through to the generic
                 // descent and Block::Table is never constructed at all.
+                //
+                // The guard is what stops that arm eating the old web: a
+                // layout table falls through to the descent below, so its
+                // links, images and prose are read normally instead of
+                // being flattened to cell text.
                 let (headers, rows) = read_table(n);
                 if !headers.is_empty() || !rows.is_empty() {
                     self.blocks.push(Block::Table { headers, rows });

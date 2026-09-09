@@ -11,22 +11,30 @@ same path a browser takes - the shell's `toRawNode`, then the core's
 
 | | pages | share |
 |---|---|---|
-| **readable** | 34 | 68% |
-| empty shell | 9 | 18% |
-| no prose found | 3 | 6% |
+| **readable** | 35 | 70% |
+| empty shell | 6 | 12% |
+| no prose found | 5 | 10% |
 | refused by the relay | 4 | 8% |
 | threw | 0 | 0% |
 
 Excluding the 5 single-page-app shells, which are in
 the corpus precisely because they are expected to fail:
-**31 of 45 readable (69%)**.
+**32 of 45 readable (71%)**.
 
 Both figures are given because reporting only the first understates the
 projection and only the second overstates it.
 
+**Navigable: 40 of 50 (80%)** -
+readable pages plus link indexes that carry no prose. Hacker News is the case
+this exists for: its front page has not one paragraph on it, so it is honestly
+not *readable*, but it projects to 198 numbered links, which is exactly what a
+board is for. Kept separate from the headline rather than folded into it,
+because widening the definition of success until more pages qualify is how a
+measurement stops being one.
+
 ## Chrome before the first useful line
 
-Across readable pages, in blocks: **median 2, worst 332**.
+Across readable pages, in blocks: **median 1, worst 332**.
 
 This is the number that decides whether the board feels like a BBS or like
 scrolling past a navigation menu. A reader gets 23 rows; chrome measured in
@@ -38,7 +46,7 @@ tens of blocks means the first screen is furniture.
 |---|---|---|---|---|---|---|
 | news | apnews.com/ | **readable** | 331→330 | 120 | 30 | 5 |
 | spa | app.asana.com/ | **refused** | -→- | - | - | - |
-| blog | artscene.textfiles.com/ansi/ | **readable** | 13→13 | 9 | 0 | 3 |
+| blog | artscene.textfiles.com/ansi/ | **readable** | 12→12 | 10 | 0 | 2 |
 | blog | blog.cloudflare.com/ | **readable** | 141→141 | 60 | 41 | 1 |
 | forum | community.cloudflare.com/ | **shell** | 1→1 | 0 | 0 | 1 |
 | blog | danluu.com/ | **no-prose** | 210→210 | 209 | 0 | 210 |
@@ -49,19 +57,19 @@ tens of blocks means the first screen is furniture.
 | docs | docs.python.org/3/tutorial/introduction.html | **readable** | 106→106 | 34 | 0 | 1 |
 | spa | figma.com/ | **readable** | 56→56 | 7 | 28 | 3 |
 | forum | forum.arduino.cc/ | **shell** | 1→1 | 0 | 0 | 1 |
-| docs | git-scm.com/docs/git-rebase | **readable** | 507→342 | 53 | 1 | 39 |
+| docs | git-scm.com/docs/git-rebase | **readable** | 505→340 | 54 | 1 | 39 |
 | blog | jvns.ca/ | **readable** | 735→712 | 621 | 0 | 1 |
 | news | lite.cnn.com/ | **readable** | 109→108 | 104 | 0 | 1 |
 | forum | lobste.rs/ | **no-prose** | 226→225 | 175 | 0 | 225 |
-| news | news.ycombinator.com/ | **shell** | 1→1 | 0 | 0 | 1 |
-| forum | news.ycombinator.com/item?id=1 | **shell** | 1→1 | 0 | 0 | 1 |
+| news | news.ycombinator.com/ | **no-prose** | 199→199 | 198 | 1 | 199 |
+| forum | news.ycombinator.com/item?id=1 | **no-prose** | 38→38 | 34 | 4 | 38 |
 | docs | nodejs.org/api/fs.html | **readable** | 3148→1807 | 645 | 0 | 2 |
 | forum | old.reddit.com/r/programming/ | **shell** | 1→0 | 0 | 0 | 0 |
 | blog | overreacted.io/ | **no-prose** | 58→58 | 58 | 0 | 58 |
 | blog | simonwillison.net/ | **readable** | 596→596 | 422 | 8 | 6 |
 | forum | stackoverflow.com/questions/tagged/rust | **refused** | -→- | - | - | - |
 | news | text.npr.org/ | **readable** | 22→22 | 20 | 0 | 1 |
-| docs | tldp.org/LDP/abs/html/ | **readable** | 511→511 | 497 | 0 | 3 |
+| docs | tldp.org/LDP/abs/html/ | **readable** | 511→511 | 498 | 0 | 3 |
 | news | www.aljazeera.com/ | **readable** | 29→22 | 15 | 0 | 0 |
 | gov | www.bankofengland.co.uk/ | **readable** | 66→65 | 50 | 0 | 1 |
 | news | www.bbc.co.uk/news | **readable** | 199→199 | 61 | 67 | 2 |
@@ -76,12 +84,12 @@ tens of blocks means the first screen is furniture.
 | spa | www.notion.so/ | **readable** | 36→33 | 19 | 0 | 1 |
 | gov | www.ons.gov.uk/ | **readable** | 83→83 | 37 | 0 | 4 |
 | gov | www.parliament.uk/ | **refused** | -→- | - | - | - |
-| docs | www.postgresql.org/docs/current/sql-select.html | **readable** | 314→274 | 41 | 0 | 3 |
+| docs | www.postgresql.org/docs/current/sql-select.html | **readable** | 317→277 | 45 | 0 | 3 |
 | spa | www.reddit.com/r/programming/ | **shell** | 0→0 | 0 | 0 | 0 |
 | news | www.reuters.com/ | **refused** | -→- | - | - | - |
 | docs | www.sqlite.org/lang_select.html | **readable** | 281→226 | 81 | 0 | 1 |
 | news | www.standard.co.uk/ | **readable** | 273→262 | 249 | 0 | 1 |
-| blog | www.textfiles.com/ | **shell** | 7→7 | 3 | 0 | 7 |
+| blog | www.textfiles.com/ | **readable** | 29→22 | 15 | 6 | 1 |
 | news | www.theguardian.com/uk | **readable** | 541→535 | 246 | 127 | 332 |
 | gov | www.usa.gov/ | **readable** | 33→32 | 26 | 0 | 1 |
 | spa | x.com/ | **readable** | 24→21 | 17 | 0 | 4 |
