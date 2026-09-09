@@ -35,18 +35,37 @@ site key ships in the client bundle by design.
 
 **Never here, in any form:** the Cloudflare API token, `SESSION_SECRET`, and
 the Turnstile **secret** key. Terraform state stores attributes verbatim, so
-anything in the configuration ends up in R2 in clear. The two Pages secrets
-are set with `wrangler pages secret put` and never reach Terraform.
+anything in the configuration ends up in R2 in clear. Both Worker secrets are
+set with `wrangler secret put` and never reach Terraform.
 
 ## What Terraform owns, and what it does not
 
-Terraform owns the Pages **project**, the custom domain, the DNS record, the
-KV namespace and the Turnstile widget.
+Terraform owns the Worker **custom domain**, the KV namespace and the
+Turnstile widget.
 
-Wrangler owns the **deployments** and the **secrets**. `lifecycle
-ignore_changes` on the project keeps the two from fighting. This is the same
-split the DBHQ website uses.
+Wrangler owns the **script**, the **deployments** and the **secrets**. This is
+the same split the DBHQ website uses.
 
-The zone itself belongs to the DBHQ repo. This project only adds one record
-to it, and references it by id rather than managing it, because two
-configurations must never both own a resource.
+There is deliberately no `cloudflare_record` here. Attaching a custom domain
+to a Worker makes Cloudflare create the proxied record and the certificate
+itself, and detaching removes them; a record managed alongside it would
+collide with the one Cloudflare owns. The Pages era did need one, for the
+CNAME to `pages.dev`.
+
+The zone itself belongs to the DBHQ repo. This project only adds to it, and
+references it by id rather than managing it, because two configurations must
+never both own a resource.
+
+## The move off Pages, 9 Sep 2026
+
+The board ran on Cloudflare Pages until it needed atomic rate-limit bindings.
+A Pages project cannot hold one: `wrangler pages deploy` rejects `unsafe`
+bindings outright, and the REST API is worse than a refusal - PATCHing the
+binding onto the project returns success and silently discards it. Without
+them the limiter falls back to KV counters, which are read-modify-write and
+so bypassed by exactly the burst they exist to stop.
+
+The Pages project still exists and is intentionally left in place, no longer
+managed by Terraform. It holds every previous deployment, so it is the
+rollback path: re-attaching the custom domain to it is one API call. Delete it
+once the Worker has proven itself.

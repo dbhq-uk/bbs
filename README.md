@@ -116,8 +116,14 @@ curl -sSfL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
 
 wasm-pack build core --target web --release
 cd shell && npm ci && npm run build && cd ..
-npx wrangler pages dev shell/dist --port 8788 --ip 100.115.72.85 --kv QUOTA
+npx wrangler dev --port 8788 --ip 100.115.72.85
 ```
+
+`wrangler dev` reads `wrangler.toml`, so it serves the built shell and the
+Worker together with the same bindings production has. Deploy with
+`npx wrangler deploy` - the board is a Worker with static assets, not a Pages
+project, because a Pages project cannot hold the atomic rate-limit bindings
+the gateway depends on.
 
 **Toolchain note.** wasm-pack 0.13.1 bundles a `wasm-opt` predating the bulk-memory proposal, while Rust 1.98 emits `memory.fill` by default. The build fails with `error validating input` unless `wasm-opt` is passed `--enable-bulk-memory`, which `core/Cargo.toml` does. Setting `wasm-opt = false` also builds but silently forfeits the size optimisation.
 

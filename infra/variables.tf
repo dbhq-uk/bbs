@@ -22,14 +22,8 @@ variable "hostname" {
   default     = "bbs.dbhq.uk"
 }
 
-variable "pages_project" {
-  description = "Cloudflare Pages project name."
+variable "worker_name" {
+  description = "The Worker script name. `wrangler deploy` creates and updates the script; Terraform only attaches the hostname to it."
   type        = string
   default     = "bbs"
-}
-
-variable "pages_target" {
-  description = "The pages.dev hostname the custom domain CNAMEs to."
-  type        = string
-  default     = "bbs-57t.pages.dev"
 }

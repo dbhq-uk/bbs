@@ -34,3 +34,21 @@ jobs:
           size=$(gzip -9 -c core/pkg/bbs_core_bg.wasm | wc -c)
           echo "wasm gzipped: $size bytes"
           test "$size" -lt 250000
+
+      # The Worker suite - the gate, the relay, sessions and routing. The
+      # comment above has always claimed CI covers these; until 9 Sep 2026 it
+      # did not actually run them, so a Worker could go out red.
+      - run: npm install
+      - run: npm test
+
+      - name: Build the shell and run its tests
+        run: |
+          cd shell
+          npm install
+          npm run build
+          npx vitest run
+
+      # The deploy is `wrangler deploy`, so a config or bundling error only
+      # surfaces at deploy time otherwise. --dry-run does the whole build and
+      # binding resolution without shipping anything.
+      - run: npx wrangler deploy --dry-run
