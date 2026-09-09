@@ -13,9 +13,12 @@ export async function loadConference(c: Conference): Promise<Item[]> {
         return new TextDecoder().decode(r.bytes);
       })();
 
-  // BBC arrives as HTML, not JSON: the relay hands back the page and the
-  // core projects it, so the conference listing is the page's own links.
-  if (c.id === "bbc") {
+  // A relayed conference arrives as HTML, not JSON: the listing is the
+  // page's own links. Keyed on `direct` rather than on an id, because the
+  // distinction is genuinely "did this come from a JSON API or a web page",
+  // and hardcoding ids meant every new HTML source fell through to
+  // JSON.parse and threw.
+  if (!c.direct) {
     const doc = new DOMParser().parseFromString(raw, "text/html");
     const byHref = new Map<string, string>();
     for (const a of Array.from(doc.querySelectorAll("a[href]"))) {
@@ -27,7 +30,8 @@ export async function loadConference(c: Conference): Promise<Item[]> {
       .slice(0, 40)
       .map(([href, title]) => ({
         title,
-        url: new URL(href, "https://www.bbc.co.uk/news").toString(),
+        // Relative hrefs resolve against the conference's own URL.
+        url: new URL(href, c.url).toString(),
       }));
   }
 
