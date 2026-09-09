@@ -66,6 +66,7 @@ fn main() {
                 Some("ascii") => GlyphSet::Ascii,
                 Some("box") => GlyphSet::Box,
                 Some("art") => GlyphSet::Art,
+                Some("all") => GlyphSet::All,
                 _ if flag("--art") => GlyphSet::Art,
                 _ => GlyphSet::Blocks,
             },
