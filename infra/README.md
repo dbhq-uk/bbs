@@ -35,8 +35,9 @@ site key ships in the client bundle by design.
 
 **Never here, in any form:** the Cloudflare API token, `SESSION_SECRET`, and
 the Turnstile **secret** key. Terraform state stores attributes verbatim, so
-anything in the configuration ends up in R2 in clear. Both Worker secrets are
-set with `wrangler secret put` and never reach Terraform.
+anything in the configuration ends up in R2 in clear. All three Worker secrets
+- `SESSION_SECRET`, `TURNSTILE_SECRET` and `RESEND_API_KEY` - are set with
+`wrangler secret put` and never reach Terraform.
 
 ## What Terraform owns, and what it does not
 
