@@ -23,10 +23,15 @@ import gzip
 import sys
 from pathlib import Path
 
-PSF = "/usr/share/consolefonts/Uni2-VGA16.psf.gz"
-OUT = Path(__file__).parent / "cp437-8x16.bin"
+# Two heights, two files. 8x16 is the 80x25 mode; 8x8 is the 80x50 mode a
+# VGA card could switch to, which doubles the rows and so doubles the
+# vertical detail available to the image quantiser.
+BUILDS = [
+    ("/usr/share/consolefonts/Uni2-VGA16.psf.gz", 16, "cp437-8x16.bin"),
+    ("/usr/share/consolefonts/Uni2-VGA8.psf.gz", 8, "cp437-8x8.bin"),
+]
 
-W, H = 8, 16
+W = 8
 
 # CP437 0x01-0x1F are SYMBOLS, not control codes.
 #
@@ -48,7 +53,7 @@ LOW_SYMBOLS = {
 }
 
 
-def load_psf1(path):
+def load_psf1(path, H):
     """Returns {unicode_char: [16 row bytes]} from a PSF1 font."""
     data = gzip.open(path, "rb").read()
     if data[:2] != b"\x36\x04":
@@ -80,7 +85,7 @@ def load_psf1(path):
     return by_char
 
 
-def geometric():
+def geometric(H):
     """Exact definitions for the glyphs the quantiser picks between."""
     g = {}
     blank = [0x00] * H
@@ -88,8 +93,9 @@ def geometric():
 
     g[0x20] = blank
     g[0xDB] = full
-    g[0xDF] = [0xFF] * 8 + [0x00] * 8          # upper half
-    g[0xDC] = [0x00] * 8 + [0xFF] * 8          # lower half
+    half = H // 2
+    g[0xDF] = [0xFF] * half + [0x00] * (H - half)   # upper half
+    g[0xDC] = [0x00] * half + [0xFF] * (H - half)   # lower half
     g[0xDD] = [0xF0] * H                       # left half
     g[0xDE] = [0x0F] * H                       # right half
 
@@ -99,7 +105,8 @@ def geometric():
     g[0xB2] = [0x77 if r % 2 == 0 else 0xDD for r in range(H)]
 
     # Small centred square.
-    g[0xFE] = [0x00] * 4 + [0x7E] * 8 + [0x00] * 4
+    q = max(1, H // 4)
+    g[0xFE] = [0x00] * q + [0x7E] * (H - 2 * q) + [0x00] * q
 
     # Single and double box drawing. Built from a shared helper so the
     # joins line up exactly; a hand-drawn set never quite does.
@@ -157,29 +164,35 @@ def geometric():
     # depends on one. Drawn geometrically so they are crisp at 8x16 rather
     # than borrowed from whatever a substitute font happens to have.
     def triangle(right=True):
+        # Widest in the middle row, tapering both ways. Sized from H so it
+        # is the same shape at 8 rows as at 16.
+        span = 7 if H >= 16 else 5
         rows = [0x00] * H
-        # Widest in the middle row, tapering both ways.
-        for r in range(7):
-            width = r + 1 if r < 4 else 7 - r
+        top = (H - span) // 2
+        for r in range(span):
+            width = min(r, span - 1 - r) + 1
             mask = 0
             for c in range(width):
                 mask |= 0x80 >> c if right else 0x01 << c
-            rows[5 + r] = mask
+            rows[top + r] = mask
         return rows
 
     g[0x10] = triangle(right=True)    # >
     g[0x11] = triangle(right=False)   # <
-    g[0x16] = [0x00] * 6 + [0xFF, 0xFF] + [0x00] * 8   # thick horizontal bar
-    g[0x09] = ([0x00] * 4 + [0x3C, 0x66, 0xC3, 0xC3, 0xC3, 0xC3, 0x66, 0x3C]
-               + [0x00] * 4)                            # hollow circle
+    g[0x16] = [0x00] * (half - 1) + [0xFF, 0xFF] + [0x00] * (H - half - 1)
+    circle = [0x3C, 0x66, 0xC3, 0xC3, 0xC3, 0xC3, 0x66, 0x3C]
+    if H < len(circle):
+        circle = [0x3C, 0x66, 0xC3, 0xC3, 0x66, 0x3C][:H]
+    pad = (H - len(circle)) // 2
+    g[0x09] = [0x00] * pad + circle + [0x00] * (H - pad - len(circle))
 
     _ = (VL, VR, Hz)  # kept for readability of the intent above
     return g
 
 
-def main():
-    by_char = load_psf1(PSF)
-    geo = geometric()
+def build(psf, H, name):
+    by_char = load_psf1(psf, H)
+    geo = geometric(H)
 
     out = bytearray()
     missing = []
@@ -201,14 +214,21 @@ def main():
                 # everything else being blank is a real hole in the font.
                 if code not in (0x00, 0xFF):
                     missing.append(code)
-        out.extend(bytes(rows))
+        out.extend(bytes(rows[:H]))
 
-    assert len(out) == 4096, len(out)
-    OUT.write_bytes(bytes(out))
-    print(f"wrote {OUT} ({len(out)} bytes)")
+    expected = 256 * H
+    assert len(out) == expected, (len(out), expected)
+    path = Path(__file__).parent / name
+    path.write_bytes(bytes(out))
+    print(f"wrote {path} ({len(out)} bytes)")
     if missing:
-        print(f"blank glyphs for {len(missing)} codes: "
+        print(f"  blank glyphs for {len(missing)} codes: "
               + " ".join(f"{c:#04x}" for c in missing))
+
+
+def main():
+    for psf, H, name in BUILDS:
+        build(psf, H, name)
 
 
 if __name__ == "__main__":

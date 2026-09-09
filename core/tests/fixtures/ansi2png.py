@@ -10,12 +10,13 @@ palette. What you see here is what the browser draws.
     python3 core/tests/fixtures/ansi2png.py <snapshot.snap> <out.png>
 """
 
+import os
 import re
 import sys
 
 from PIL import Image
 
-FONT = "core/assets/cp437-8x16.bin"
+FONT = os.environ.get("BBS_FONT", "core/assets/cp437-8x16.bin")
 
 # Must match PALETTE in core/src/screen.rs.
 PALETTE = [
@@ -85,18 +86,19 @@ def parse(text):
 
 
 def render(rows, font_bytes, scale=1):
+    cell_h = len(font_bytes) // 256
     w = max(len(r) for r in rows) * 8
-    h = len(rows) * 16
+    h = len(rows) * cell_h
     im = Image.new("RGB", (w, h), (0, 0, 0))
     px = im.load()
     for y, row in enumerate(rows):
         for x, (byte, fg, bg) in enumerate(row):
-            glyph = font_bytes[byte * 16 : byte * 16 + 16]
-            for gy in range(16):
+            glyph = font_bytes[byte * cell_h : (byte + 1) * cell_h]
+            for gy in range(cell_h):
                 bits = glyph[gy]
                 for gx in range(8):
                     on = bits & (0x80 >> gx)
-                    px[x * 8 + gx, y * 16 + gy] = PALETTE[fg if on else bg]
+                    px[x * 8 + gx, y * cell_h + gy] = PALETTE[fg if on else bg]
     if scale != 1:
         im = im.resize((w * scale, h * scale), Image.NEAREST)
     return im
@@ -104,6 +106,13 @@ def render(rows, font_bytes, scale=1):
 
 if __name__ == "__main__":
     src, out = sys.argv[1], sys.argv[2]
+    # A custom palette makes the cell values indices into sixteen colours
+    # that exist only for that image, so it has to travel with the art.
+    if len(sys.argv) > 3:
+        hexes = sys.argv[3].split(",")
+        PALETTE[:] = [
+            (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)) for h in hexes
+        ]
     text = open(src, encoding="utf-8").read()
     # insta snapshots carry a YAML header ending in a `---` line.
     if text.startswith("---"):

@@ -28,6 +28,7 @@ fn main() {
                 .ok()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(1.2),
+            ..Default::default()
         },
     );
     print!("{}", encode(&s));

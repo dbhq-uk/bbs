@@ -58,8 +58,18 @@ pub fn linear_to_oklab(r: f32, g: f32, b: f32) -> Lab {
 
 /// The palette in linear light, for blending.
 pub fn palette_linear() -> [(f32, f32, f32); 16] {
+    palette_linear_of(&PALETTE)
+}
+
+/// As above, for an arbitrary sixteen colours.
+///
+/// Parameterised because a custom per-image palette is the single largest
+/// quality lever the quantiser has - see palette.rs. Everything downstream
+/// works in linear light and Oklab, so nothing else needs to know whether
+/// the sixteen came from DOS or from the picture.
+pub fn palette_linear_of(pal: &[(u8, u8, u8); 16]) -> [(f32, f32, f32); 16] {
     let mut out = [(0.0, 0.0, 0.0); 16];
-    for (i, &(r, g, b)) in PALETTE.iter().enumerate() {
+    for (i, &(r, g, b)) in pal.iter().enumerate() {
         out[i] = (srgb_to_linear(r), srgb_to_linear(g), srgb_to_linear(b));
     }
     out
@@ -67,7 +77,11 @@ pub fn palette_linear() -> [(f32, f32, f32); 16] {
 
 /// The palette in Oklab, for distance.
 pub fn palette_oklab() -> [Lab; 16] {
-    let lin = palette_linear();
+    palette_oklab_of(&PALETTE)
+}
+
+pub fn palette_oklab_of(pal: &[(u8, u8, u8); 16]) -> [Lab; 16] {
+    let lin = palette_linear_of(pal);
     let mut out = [Lab {
         l: 0.0,
         a: 0.0,

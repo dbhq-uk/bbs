@@ -17,6 +17,7 @@ pub mod font;
 pub mod image;
 pub mod layout;
 pub mod name;
+pub mod palette;
 pub mod project;
 pub mod raw;
 pub mod role;

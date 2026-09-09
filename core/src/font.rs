@@ -3,6 +3,35 @@
 /// regenerate rather than hand-editing these bytes.
 pub static FONT: &[u8; 4096] = include_bytes!("../assets/cp437-8x16.bin");
 
+/// CP437 8x8, for the 80x50 mode. Same generator, same code page, half the
+/// rows - which is exactly what a VGA card did when it switched modes.
+pub static FONT_8X8: &[u8; 2048] = include_bytes!("../assets/cp437-8x8.bin");
+
+/// The font for a given cell height. 8 and 16 are the two real VGA text
+/// modes; anything else falls back to 8x16 rather than inventing a font.
+pub fn font_for(cell_h: u32) -> &'static [u8] {
+    if cell_h == 8 {
+        FONT_8X8.as_slice()
+    } else {
+        FONT.as_slice()
+    }
+}
+
+/// The glyph mask at a given cell height, packed from the top so bit 127 is
+/// always the top-left pixel regardless of height. An 8-row glyph therefore
+/// occupies bits 127..64 and leaves the rest clear, which keeps the XOR and
+/// popcount comparison in choose_glyph identical for both modes.
+pub fn glyph_mask_h(code: u8, cell_h: u32) -> u128 {
+    let font = font_for(cell_h);
+    let h = cell_h as usize;
+    let start = (code as usize) * h;
+    let mut m: u128 = 0;
+    for i in 0..h {
+        m |= (font[start + i] as u128) << (120 - i * 8);
+    }
+    m
+}
+
 pub fn glyph(code: u8) -> &'static [u8; 16] {
     let start = (code as usize) * 16;
     FONT[start..start + 16].try_into().unwrap()

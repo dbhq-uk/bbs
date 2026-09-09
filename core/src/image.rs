@@ -23,13 +23,31 @@
 //! that more symbols greatly improves quality, and the decomposition below
 //! makes the per-candidate cost O(1), so there is no reason to restrict it.
 
-use crate::colour::{linear_to_oklab, palette_linear, palette_oklab, srgb_to_linear, Lab};
-use crate::font::glyph_mask;
+use crate::colour::{linear_to_oklab, palette_linear_of, palette_oklab_of, srgb_to_linear, Lab};
+use crate::font::glyph_mask_h;
 use crate::screen::{Cell, Colour, Screen};
 
 const CELL_W: u32 = 8;
-const CELL_H: u32 = 16;
-const SAMPLES: usize = (CELL_W * CELL_H) as usize;
+
+/// The tallest cell, and therefore the size of the per-cell buffers.
+///
+/// A cell is 8x16 in the 80x25 mode and 8x8 in the 80x50 mode. The buffers
+/// are sized for the larger and only the first `samples` entries are used,
+/// which keeps them on the stack instead of allocating per cell.
+const MAX_SAMPLES: usize = 128;
+
+/// How the sixteen colours are chosen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PaletteMode {
+    /// The fixed DOS palette. What a stock VGA card powered up with.
+    Dos,
+    /// Sixteen chosen for this image and snapped to the VGA DAC's six bits
+    /// per channel - what ACiD's XBIN format was built to carry, and the
+    /// single largest quality lever the quantiser has.
+    Auto,
+    /// A palette supplied by the caller.
+    Fixed([(u8, u8, u8); 16]),
+}
 
 /// How much of the objective is the filtered (tonal) term. The rest is the
 /// native (structural) term.
@@ -53,6 +71,13 @@ pub struct Options {
     pub max_rows: u16,
     pub monochrome: bool,
     pub glyphs: GlyphSet,
+    /// Cell height in pixels: 16 for the 80x25 mode, 8 for 80x50.
+    ///
+    /// Halving it doubles the rows for the same picture, so it doubles the
+    /// vertical samples. Both are real VGA text modes.
+    pub cell_h: u32,
+    /// Where the sixteen colours come from.
+    pub palette: PaletteMode,
     /// Local detail boost, 0 disables it.
     ///
     /// A face's internal variation is often smaller than the gap between
@@ -107,6 +132,8 @@ impl Default for Options {
             max_rows: 37,
             monochrome: false,
             glyphs: GlyphSet::Blocks,
+            cell_h: 16,
+            palette: PaletteMode::Dos,
             detail: 1.2,
         }
     }
@@ -130,15 +157,18 @@ struct Tables {
     /// Every glyph's bitmap as a 128-bit mask, and how many bits it sets.
     glyphs: Vec<(u8, u128, u32)>,
     pal_lab: [Lab; 16],
+    /// Pixels per cell: 8 * cell_h.
+    samples: usize,
     /// Oklab of every (fg, bg, coverage) blend. Coverage is a count of set
     /// pixels, 0..=128, so this is exact rather than interpolated.
     blend: Vec<Lab>,
 }
 
 impl Tables {
-    fn new(mono: bool, set: GlyphSet) -> Self {
-        let pal_lin = palette_linear();
-        let pal_lab = palette_oklab();
+    fn new(mono: bool, set: GlyphSet, pal: &[(u8, u8, u8); 16], cell_h: u32) -> Self {
+        let pal_lin = palette_linear_of(pal);
+        let pal_lab = palette_oklab_of(pal);
+        let samples = (CELL_W * cell_h) as usize;
 
         let allowed: Vec<u8> = if mono { vec![0, 15] } else { (0..16).collect() };
 
@@ -148,14 +178,14 @@ impl Tables {
                 a: 0.0,
                 b: 0.0
             };
-            16 * 16 * (SAMPLES + 1)
+            16 * 16 * (MAX_SAMPLES + 1)
         ];
         for &f in &allowed {
             for &b in &allowed {
-                for n in 0..=SAMPLES {
+                for n in 0..=samples {
                     // Mix in linear light, then convert. Mixing in sRGB or
                     // in Oklab both give the wrong colour for a dot lattice.
-                    let a = n as f32 / SAMPLES as f32;
+                    let a = n as f32 / samples as f32;
                     let (fr, fg_, fb) = pal_lin[f as usize];
                     let (br, bg_, bb) = pal_lin[b as usize];
                     let lab = linear_to_oklab(
@@ -176,7 +206,7 @@ impl Tables {
             if !set.allows(code) {
                 continue;
             }
-            let m = glyph_mask(code);
+            let m = glyph_mask_h(code, cell_h);
             if seen.insert(m) {
                 glyphs.push((code, m, m.count_ones()));
             }
@@ -185,40 +215,70 @@ impl Tables {
         Tables {
             glyphs,
             pal_lab,
+            samples,
             blend,
         }
     }
 }
 
 fn blend_index(f: u8, b: u8, n: usize) -> usize {
-    ((f as usize) * 16 + (b as usize)) * (SAMPLES + 1) + n
+    ((f as usize) * 16 + (b as usize)) * (MAX_SAMPLES + 1) + n
 }
 
 pub fn quantise_with(rgba: &[u8], w: u32, h: u32, opts: Options) -> Screen {
+    quantise_full(rgba, w, h, opts).screen
+}
+
+/// A quantised image and the sixteen colours it was drawn with.
+///
+/// The palette travels WITH the screen because it has to: under
+/// PaletteMode::Auto the cell values are indices into a palette that exists
+/// only for this image, so a renderer handed the screen alone would draw it
+/// in DOS colours and produce something quite unlike what was measured.
+pub struct Quantised {
+    pub screen: Screen,
+    pub palette: [(u8, u8, u8); 16],
+}
+
+pub fn quantise_full(rgba: &[u8], w: u32, h: u32, opts: Options) -> Quantised {
+    let palette = match opts.palette {
+        PaletteMode::Dos => crate::screen::PALETTE,
+        PaletteMode::Fixed(p) => p,
+        // Chosen from the ORIGINAL pixels, before the detail boost. The
+        // unsharp mask pushes values past what the picture contains, and a
+        // palette fitted to those overshoots represents colours that are
+        // not in the image.
+        PaletteMode::Auto => crate::palette::choose(rgba, w, h),
+    };
+
     if w == 0 || h == 0 || opts.cols == 0 {
-        return Screen::new(0, 0);
+        return Quantised {
+            screen: Screen::new(0, 0),
+            palette,
+        };
     }
+    let cell_h = opts.cell_h.clamp(1, 16);
     let rgba = &local_contrast(rgba, w, h, opts.detail);
 
     // Aspect correction. A cell is twice as tall as it is wide, so sampling
     // a square region per cell would stretch every image to double height.
     let cols = opts.cols as u32;
     let rows = {
-        let r = (h as f32 * cols as f32 * CELL_W as f32) / (w as f32 * CELL_H as f32);
+        let r = (h as f32 * cols as f32 * CELL_W as f32) / (w as f32 * cell_h as f32);
         (r.round() as u32).clamp(1, opts.max_rows as u32)
     };
 
-    let t = Tables::new(opts.monochrome, opts.glyphs);
+    let t = Tables::new(opts.monochrome, opts.glyphs, &palette, cell_h);
     let mut screen = Screen::new(cols as u16, rows as u16);
-    let mut cell = [(0.0f32, 0.0f32, 0.0f32); SAMPLES];
+    let mut cell = [(0.0f32, 0.0f32, 0.0f32); MAX_SAMPLES];
 
     for cy in 0..rows {
         for cx in 0..cols {
-            sample_cell(rgba, w, h, cx, cy, cols, rows, &mut cell);
+            sample_cell(rgba, w, h, cx, cy, cols, rows, cell_h, &mut cell);
             screen.set(cx as u16, cy as u16, choose_glyph(&cell, &t, &opts));
         }
     }
-    screen
+    Quantised { screen, palette }
 }
 
 /// The 8x16 block of source pixels behind one output cell, in LINEAR light.
@@ -236,18 +296,19 @@ fn sample_cell(
     cy: u32,
     cols: u32,
     rows: u32,
-    out: &mut [(f32, f32, f32); SAMPLES],
+    cell_h: u32,
+    out: &mut [(f32, f32, f32); MAX_SAMPLES],
 ) {
     let total_w = (cols * CELL_W) as f32;
-    let total_h = (rows * CELL_H) as f32;
+    let total_h = (rows * cell_h) as f32;
 
-    for py in 0..CELL_H {
+    for py in 0..cell_h {
         for px in 0..CELL_W {
             let x0 = ((cx * CELL_W + px) as f32 / total_w * w as f32).floor() as u32;
             let x1 = (((cx * CELL_W + px + 1) as f32 / total_w * w as f32).ceil() as u32)
                 .clamp(x0 + 1, w);
-            let y0 = ((cy * CELL_H + py) as f32 / total_h * h as f32).floor() as u32;
-            let y1 = (((cy * CELL_H + py + 1) as f32 / total_h * h as f32).ceil() as u32)
+            let y0 = ((cy * cell_h + py) as f32 / total_h * h as f32).floor() as u32;
+            let y1 = (((cy * cell_h + py + 1) as f32 / total_h * h as f32).ceil() as u32)
                 .clamp(y0 + 1, h);
 
             let (mut r, mut g, mut b, mut n) = (0.0f32, 0.0f32, 0.0f32, 0u32);
@@ -281,21 +342,21 @@ fn sample_cell(
 /// per-partition count, vector sum and scalar sum-of-squares are known the
 /// error for any colour pair is O(1). That is what makes searching the
 /// whole font against 36 colour pairs affordable.
-fn choose_glyph(cell: &[(f32, f32, f32); SAMPLES], t: &Tables, opts: &Options) -> Cell {
+fn choose_glyph(cell: &[(f32, f32, f32); MAX_SAMPLES], t: &Tables, opts: &Options) -> Cell {
     // Oklab of every sample, and the cell's mean colour in linear light.
     let mut lab = [Lab {
         l: 0.0,
         a: 0.0,
         b: 0.0,
-    }; SAMPLES];
+    }; MAX_SAMPLES];
     let (mut mr, mut mg, mut mb) = (0.0f32, 0.0f32, 0.0f32);
-    for (i, &(r, g, b)) in cell.iter().enumerate() {
+    for (i, &(r, g, b)) in cell.iter().take(t.samples).enumerate() {
         lab[i] = linear_to_oklab(r, g, b);
         mr += r;
         mg += g;
         mb += b;
     }
-    let n = SAMPLES as f32;
+    let n = t.samples as f32;
     let mean_lab = linear_to_oklab(mr / n, mg / n, mb / n);
 
     // ALL ordered palette pairs, not the ones nearest the cell mean.
@@ -318,7 +379,7 @@ fn choose_glyph(cell: &[(f32, f32, f32); SAMPLES], t: &Tables, opts: &Options) -
         // Partition sums, computed once per glyph rather than per pair.
         let (mut s_l, mut s_a, mut s_b, mut s_q) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
         let (mut c_l, mut c_a, mut c_b, mut c_q) = (0.0f32, 0.0f32, 0.0f32, 0.0f32);
-        for (i, &p) in lab.iter().enumerate() {
+        for (i, &p) in lab.iter().take(t.samples).enumerate() {
             let q = p.l * p.l + p.a * p.a + p.b * p.b;
             if (mask >> (127 - i)) & 1 == 1 {
                 s_l += p.l;
@@ -333,7 +394,7 @@ fn choose_glyph(cell: &[(f32, f32, f32); SAMPLES], t: &Tables, opts: &Options) -
             }
         }
         let set_f = set_n as f32;
-        let clr_f = (SAMPLES as u32 - set_n) as f32;
+        let clr_f = (t.samples as u32 - set_n) as f32;
 
         for &f in near.iter() {
             let cf = t.pal_lab[f as usize];

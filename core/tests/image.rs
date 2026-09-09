@@ -73,6 +73,7 @@ fn a_horizontal_split_picks_a_half_block() {
             detail: 0.0,
             glyphs: GlyphSet::Blocks,
             monochrome: false,
+            ..Default::default()
         },
     );
     assert_eq!(s.h, 1, "geometry check: this test needs exactly one row");
@@ -160,6 +161,7 @@ fn a_vertical_split_picks_a_left_or_right_half_block() {
             detail: 0.0,
             glyphs: GlyphSet::Blocks,
             monochrome: false,
+            ..Default::default()
         },
     );
     let c = s.at(0, 0);

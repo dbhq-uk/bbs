@@ -1,19 +1,36 @@
 //! Quantises a PNG to ANSI, for eyeballing art before it goes on the board.
 //!
-//!     cargo run --example quantise_png -- pic.png 40 [detail] [mono] > out.ans
+//!     cargo run --example quantise_png -- pic.png [cols] [detail] [mono] \
+//!         [--auto-palette] [--cell-h 8]
+//!
+//! With --auto-palette the sixteen colours are chosen for the image, so the
+//! ANSI on stdout is meaningless without them: the palette is written to
+//! stderr as `PALETTE rrggbb ...` for ansi2png.py to pick up.
 use bbs_core::ansi;
-use bbs_core::image::{quantise_with, Options};
+use bbs_core::image::{quantise_full, Options, PaletteMode};
 
 fn main() {
-    let mut args = std::env::args().skip(1);
-    let path = args
-        .next()
-        .expect("usage: quantise_png <file.png> [cols] [mono]");
-    let cols: u16 = args.next().and_then(|s| s.parse().ok()).unwrap_or(40);
-    let detail: f32 = args.next().and_then(|s| s.parse().ok()).unwrap_or(1.2);
-    let mono = args.next().is_some_and(|s| s == "mono");
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let positional: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
+    let flag = |n: &str| args.iter().any(|a| a == n);
+    let value = |n: &str| {
+        args.iter()
+            .position(|a| a == n)
+            .and_then(|i| args.get(i + 1))
+            .and_then(|v| v.parse::<u32>().ok())
+    };
 
-    let file = std::fs::File::open(&path).expect("open");
+    let path = positional
+        .first()
+        .expect("usage: quantise_png <file.png> ...");
+    let cols: u16 = positional.get(1).and_then(|s| s.parse().ok()).unwrap_or(40);
+    let detail: f32 = positional
+        .get(2)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1.2);
+    let mono = positional.get(3).is_some_and(|s| s.as_str() == "mono");
+
+    let file = std::fs::File::open(path.as_str()).expect("open");
     let mut reader = png::Decoder::new(file).read_info().expect("png");
     let mut buf = vec![0; reader.output_buffer_size()];
     let info = reader.next_frame(&mut buf).expect("frame");
@@ -28,18 +45,30 @@ fn main() {
         o => panic!("unsupported colour type {o:?}"),
     };
 
-    let s = quantise_with(
+    let q = quantise_full(
         &rgba,
         info.width,
         info.height,
         Options {
             cols,
-            max_rows: 200,
+            max_rows: 400,
             monochrome: mono,
             detail,
-            ..Options::default()
+            cell_h: value("--cell-h").unwrap_or(16),
+            palette: if flag("--auto-palette") {
+                PaletteMode::Auto
+            } else {
+                PaletteMode::Dos
+            },
+            ..Default::default()
         },
     );
-    eprintln!("{}x{}", s.w, s.h);
-    print!("{}", ansi::encode(&s));
+
+    eprintln!("{}x{}", q.screen.w, q.screen.h);
+    eprint!("PALETTE");
+    for (r, g, b) in q.palette {
+        eprint!(" {r:02x}{g:02x}{b:02x}");
+    }
+    eprintln!();
+    print!("{}", ansi::encode(&q.screen));
 }
