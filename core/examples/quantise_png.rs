@@ -13,6 +13,12 @@ fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let positional: Vec<&String> = args.iter().filter(|a| !a.starts_with("--")).collect();
     let flag = |n: &str| args.iter().any(|a| a == n);
+    let sval = |n: &str| {
+        args.iter()
+            .position(|a| a == n)
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+    };
     let value = |n: &str| {
         args.iter()
             .position(|a| a == n)
@@ -56,10 +62,12 @@ fn main() {
             detail,
             cell_h: value("--cell-h").unwrap_or(16),
             art_font: flag("--art"),
-            glyphs: if flag("--art") {
-                GlyphSet::Art
-            } else {
-                GlyphSet::Blocks
+            glyphs: match sval("--glyphs").as_deref() {
+                Some("ascii") => GlyphSet::Ascii,
+                Some("box") => GlyphSet::Box,
+                Some("art") => GlyphSet::Art,
+                _ if flag("--art") => GlyphSet::Art,
+                _ => GlyphSet::Blocks,
             },
             palette: if flag("--auto-palette") {
                 PaletteMode::Auto

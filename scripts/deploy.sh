@@ -36,12 +36,16 @@ curl -fsS -X POST \
         "https://bbs.dbhq.uk/index.html",
         "https://bbs.dbhq.uk/robots.txt",
         "https://bbs.dbhq.uk/sitemap.xml",
-        "https://bbs.dbhq.uk/llms.txt"
+        "https://bbs.dbhq.uk/llms.txt",
+        "https://bbs.dbhq.uk/ascii-art-generator/",
+        "https://bbs.dbhq.uk/tool.css",
+        "https://bbs.dbhq.uk/analytics.js",
+        "https://bbs.dbhq.uk/consent.js"
       ]}' >/dev/null
 echo "    purged"
 
 echo "==> verifying"
-for p in "" robots.txt sitemap.xml llms.txt; do
+for p in "" ascii-art-generator/ robots.txt sitemap.xml llms.txt; do
   code=$(curl -s -o /dev/null -w "%{http_code}" "https://bbs.dbhq.uk/${p}?cb=$RANDOM")
   printf '    %-14s %s\n' "/${p}" "$code"
 done

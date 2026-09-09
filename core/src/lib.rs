@@ -10,6 +10,7 @@ use wasm_bindgen::prelude::*;
 pub mod access;
 pub mod ansi;
 pub mod ansi_art;
+pub mod ascii;
 pub mod chrome;
 pub mod colour;
 pub mod doc;
@@ -185,6 +186,13 @@ struct ArtResult {
     group: String,
 }
 
+/// Plain ASCII art by luminance ramp. Text only, no escape codes.
+#[wasm_bindgen]
+pub fn render_ascii(rgba: &[u8], w: u32, h: u32, cols: u16, fine: bool, invert: bool) -> String {
+    let ramp = if fine { ascii::RAMP_FINE } else { ascii::RAMP };
+    ascii::render(rgba, w, h, cols, ramp, invert)
+}
+
 #[wasm_bindgen]
 #[allow(clippy::too_many_arguments)]
 pub fn render_image(
@@ -197,6 +205,7 @@ pub fn render_image(
     cell_h: u32,
     auto_palette: bool,
     art_font: bool,
+    glyph_set: &str,
 ) -> Result<JsValue, JsValue> {
     let opts = image::Options {
         cols,
@@ -204,10 +213,11 @@ pub fn render_image(
         monochrome,
         cell_h,
         art_font,
-        glyphs: if art_font {
-            image::GlyphSet::Art
-        } else {
-            image::GlyphSet::Blocks
+        glyphs: match glyph_set {
+            "ascii" => image::GlyphSet::Ascii,
+            "art" => image::GlyphSet::Art,
+            "box" => image::GlyphSet::Box,
+            _ => image::GlyphSet::Blocks,
         },
         palette: if auto_palette {
             image::PaletteMode::Auto

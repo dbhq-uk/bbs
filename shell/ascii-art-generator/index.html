@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>ASCII Art Generator - convert an image to ASCII or ANSI art | DBHQ</title>
+    <meta
+      name="description"
+      content="Turn a photo into ASCII art or 16-colour ANSI art in your browser. Nothing is uploaded: the conversion runs on your own machine. Copy as plain text or download as an image."
+    />
+    <link rel="canonical" href="https://bbs.dbhq.uk/ascii-art-generator/" />
+    <meta name="theme-color" content="#000000" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="bbs.dbhq.uk" />
+    <meta property="og:url" content="https://bbs.dbhq.uk/ascii-art-generator/" />
+    <meta property="og:title" content="ASCII Art Generator - image to ASCII and ANSI art" />
+    <meta
+      property="og:description"
+      content="Convert a picture to ASCII or 16-colour ANSI art without uploading it anywhere."
+    />
+    <meta name="twitter:card" content="summary" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebApplication",
+            "@id": "https://bbs.dbhq.uk/ascii-art-generator/#app",
+            "name": "ASCII Art Generator",
+            "url": "https://bbs.dbhq.uk/ascii-art-generator/",
+            "applicationCategory": "MultimediaApplication",
+            "operatingSystem": "Any browser with WebAssembly",
+            "browserRequirements": "Requires WebAssembly",
+            "description": "Converts an image to ASCII art or 16-colour ANSI art entirely in the browser. No upload.",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "GBP" },
+            "isPartOf": { "@id": "https://bbs.dbhq.uk/#website" }
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://bbs.dbhq.uk/ascii-art-generator/#faq",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "Is my image uploaded anywhere?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "No. The image is decoded and converted by WebAssembly running on your own machine. It never leaves the browser, and the page works with the network disconnected once it has loaded."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What is the difference between ASCII art and ANSI art?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "ASCII art uses only the 95 printable ASCII characters and no colour, so it pastes into a README, a commit message or a terminal. ANSI art adds the CP437 block and shade characters and 16 colours, which is what bulletin board artists used and what looks closest to the original photograph."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Which image formats work?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Anything your browser can decode, which covers JPEG, PNG, GIF, WebP and AVIF. You can also paste a screenshot straight from the clipboard."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do I get a good result from a photograph?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Use a picture with a clear subject and a plain background, and raise the column count. Faces work best when they fill the frame; a busy background spends detail on things you do not care about."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+
+    <script src="/analytics.js"></script>
+    <link rel="stylesheet" href="/tool.css" />
+  </head>
+  <body>
+    <header>
+      <a class="home" href="/">bbs.dbhq.uk</a>
+      <span class="sep">/</span>
+      <span>ASCII art generator</span>
+    </header>
+
+    <main>
+      <h1>ASCII Art Generator</h1>
+      <p class="lede">
+        Turn a photograph into ASCII art or 16-colour ANSI art. The conversion
+        runs in your browser, so <strong>your image is never uploaded</strong>.
+      </p>
+
+      <div id="drop" tabindex="0" role="button" aria-label="Choose an image">
+        <strong>Drop an image here</strong>
+        <span>or click to choose one, or paste from the clipboard</span>
+        <input id="file" type="file" accept="image/*" hidden />
+      </div>
+
+      <div class="controls">
+        <label>
+          Output
+          <select id="mode">
+            <option value="ascii">ASCII - plain text</option>
+            <option value="ansi">ANSI - 16 colours</option>
+          </select>
+        </label>
+        <label>
+          Width <output id="colsOut">100</output> columns
+          <input id="cols" type="range" min="20" max="200" value="100" step="2" />
+        </label>
+        <label data-ascii-only>
+          <input id="fine" type="checkbox" /> Fine ramp (70 characters)
+        </label>
+        <label data-ascii-only>
+          <input id="invert" type="checkbox" /> Invert (for a light background)
+        </label>
+        <label data-ansi-only hidden>
+          <input id="palette" type="checkbox" checked /> Custom 16-colour palette
+        </label>
+        <label data-ansi-only hidden>
+          <input id="artfont" type="checkbox" checked /> Fine shade ramp
+        </label>
+      </div>
+
+      <div class="actions">
+        <button id="copy" type="button">Copy text</button>
+        <button id="download" type="button">Download</button>
+        <span id="status" role="status"></span>
+      </div>
+
+      <pre id="out-text" aria-label="ASCII art output"></pre>
+      <canvas id="out-canvas" hidden aria-label="ANSI art output"></canvas>
+
+      <h2>ASCII art or ANSI art?</h2>
+      <p>
+        <strong>ASCII art</strong> uses only the 95 printable characters every
+        machine has, and no colour. One character is chosen per cell purely on
+        brightness, from a ramp running dark to light. That is what makes it
+        legible: the eye reads the density rather than the letters. It pastes
+        into a README, a commit message, an email signature or a terminal.
+      </p>
+      <p>
+        <strong>ANSI art</strong> adds the CP437 block and shade characters and
+        16 colours, which is what bulletin board artists drew with. Here the
+        character, the foreground and the background are chosen together and
+        scored against the original in a perceptual colour space, so it comes
+        far closer to the photograph than a character ramp can.
+      </p>
+
+      <h2>Sixteen colours, chosen for your picture</h2>
+      <p>
+        A VGA card could produce 262,144 colours and show any 16 at once, so the
+        fixed DOS palette was a default rather than a limit. In ANSI mode this
+        picks the 16 for each individual image and snaps them to what the
+        hardware could actually display, which is what the XBIN format was
+        invented for in 1996. On a portrait it makes more difference than
+        doubling the resolution.
+      </p>
+
+      <h2>Nothing is uploaded</h2>
+      <p>
+        Most converters for this send your photograph to a server. This one does
+        not, and cannot: the decoder is your browser's own and the converter is
+        Rust compiled to WebAssembly running on your machine. Load the page,
+        disconnect from the network, and it still works.
+      </p>
+
+      <h2>Getting a good result</h2>
+      <ul>
+        <li>A clear subject on a plain background beats a busy scene. Detail spent on clutter is detail not spent on the face.</li>
+        <li>Raise the column count for more detail, but remember the output has to fit wherever you are pasting it. 80 columns is the traditional width and fits a terminal.</li>
+        <li>Turn on <em>Invert</em> if the art will sit on a white page, so dark characters carry the shadows.</li>
+        <li>Crop tightly before converting. The tool works with what you give it.</li>
+      </ul>
+
+      <h2>Frequently asked</h2>
+      <h3>Is my image uploaded anywhere?</h3>
+      <p>No. It never leaves your browser.</p>
+      <h3>Which formats work?</h3>
+      <p>
+        Anything your browser can decode: JPEG, PNG, GIF, WebP and AVIF. You can
+        paste a screenshot straight from the clipboard.
+      </p>
+      <h3>Can I use the output commercially?</h3>
+      <p>
+        The output is yours. The tool adds no watermark and claims nothing.
+      </p>
+
+      <hr />
+      <p class="foot">
+        Part of <a href="/">bbs.dbhq.uk</a>, a bulletin board that renders the
+        live web as ANSI, built by <a href="https://dbhq.uk/">DBHQ</a>. The
+        converter is <a href="https://github.com/dbhq-uk/bbs">open source</a>.
+      </p>
+    </main>
+
+    <script src="/consent.js"></script>
+    <script type="module" src="/src/tool.ts"></script>
+  </body>
+</html>

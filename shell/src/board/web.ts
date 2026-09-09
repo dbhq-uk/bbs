@@ -38,6 +38,7 @@ type Wasm = {
     cellH: number,
     autoPalette: boolean,
     artFont: boolean,
+    glyphSet: string,
   ) => unknown;
   render_ansi_art: (
     bytes: Uint8Array,
@@ -81,7 +82,7 @@ export async function openUrl(url: string, wasm: Wasm): Promise<WebResult> {
     // Sixteen colours chosen for this picture, snapped to the VGA DAC.
     // The palette comes back with the screen because the cell values are
     // indices into it - see PaletteMode::Auto in the core.
-    const img = wasm.render_image(rgba, w, h, COLS, BODY_ROWS, false, 8, true, true) as {
+    const img = wasm.render_image(rgba, w, h, COLS, BODY_ROWS, false, 16, true, true, "art") as {
       screen: Screen;
       palette: [number, number, number][];
     };
@@ -136,7 +137,7 @@ export async function fetchImage(
   if (!got.ok || !got.contentType.startsWith("image/")) return null;
   try {
     const { rgba, w, h } = await decodeToRgba(got.bytes);
-    const img = wasm.render_image(rgba, w, h, COLS, BODY_ROWS, false, 8, true, true) as {
+    const img = wasm.render_image(rgba, w, h, COLS, BODY_ROWS, false, 16, true, true, "art") as {
       screen: Screen;
       palette: [number, number, number][];
     };

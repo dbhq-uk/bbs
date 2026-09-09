@@ -113,6 +113,13 @@ pub enum GlyphSet {
     /// Blocks plus the art font's sixteen-rung shade ramp. Only meaningful
     /// with `art_font: true`, which is what puts those glyphs there.
     Art,
+    /// Printable ASCII only, for output that can be pasted anywhere.
+    ///
+    /// The block and shade glyphs are CP437, so text using them survives
+    /// only where that code page or its Unicode equivalents do. A reader
+    /// who wants ASCII art for a README, a signature or a terminal needs
+    /// characters from the 95 everyone has.
+    Ascii,
 }
 
 impl GlyphSet {
@@ -132,6 +139,7 @@ impl GlyphSet {
             GlyphSet::Art => {
                 GlyphSet::Blocks.allows(code) || crate::font::ART_SHADES.contains(&code)
             }
+            GlyphSet::Ascii => (0x20..=0x7E).contains(&code),
         }
     }
 }
