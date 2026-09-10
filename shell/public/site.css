@@ -31,17 +31,16 @@ footer { border-top: 1px solid var(--line); flex: 0 0 auto; }
 .bar .tag { color: var(--dim); }
 @media (max-width: 640px) { .bar .tag { display: none; } }
 
-/* "Also from DBHQ" - the sibling cross-link block every DBHQ property
-   carries in its footer, styled to this board's own terminal chrome
-   rather than the card layout the other sites use it in. */
-.also { padding: .55rem 1rem 0; }
-.also-label { margin: 0 0 .3rem; color: var(--cyan); font-size: .78rem; letter-spacing: .03em; }
-.also-list {
-  list-style: none; margin: 0; padding: 0 0 .55rem; color: var(--dim); font-size: .78rem;
-  display: flex; flex-wrap: wrap; gap: .25rem 1.5rem;
-}
-.also-list a { color: var(--cyan); text-decoration: none; }
-.also-list a:hover { text-decoration: underline; }
+/* The footer carries the byline and the source link, and nothing else.
+
+   It used to hold an "Also from DBHQ" list - four sibling names with a
+   clause each, in the row nobody reads, repeated on every page. On the
+   board page it also cost the board screen height, which is the one thing
+   that page cannot spare. The same four live at /projects/ now, with room
+   to say why each is worth a click, and the nav sends people there. */
+.byline { color: var(--dim); }
+.byline a { color: var(--cyan); text-decoration: none; }
+.byline a:hover { text-decoration: underline; }
 
 /* The board fills whatever is left between the two bars and never causes a
    scrollbar. min-height:0 is load-bearing: without it a flex child refuses
@@ -73,22 +72,19 @@ footer { border-top: 1px solid var(--line); flex: 0 0 auto; }
 }
 
 /* THE BOARD NEEDS THE HEIGHT MORE THAN THE CHROME DOES.
-   On a landscape phone the two bars and the cross-link block cost about a
-   third of the window, and the board is scaled to whatever is left - so
-   every row of chrome comes straight off the size of the text. The
-   navigation stays: it is the only route to /about/, the ASCII tool and
-   the source. The cross-link block does not, because /about/ carries the
-   same links and is one tap away. */
+   On a landscape phone the two bars cost a fifth of the window, and the
+   board is scaled to whatever is left - so every row of chrome comes
+   straight off the size of the text. The navigation stays: it is the only
+   route to /about/, the ASCII tool, /projects/ and the source. */
 @media (max-height: 560px), (max-width: 700px) {
   :root { --bar: 26px; }
   .bar { gap: .75rem; padding: 0 .6rem; font-size: .72rem; }
-  /* The footer's sentence wraps to two lines in a 393px window, inside a bar
-     that is a fixed 26px tall - so it overflowed the bar, made the page
-     taller than the viewport and brought the scrollbar back. It is a
-     description, not a control; the links beside it stay. */
-  footer .bar > span { display: none; }
+  /* The byline wraps to two lines in a 393px window, inside a bar that is a
+     fixed 26px tall - so it overflowed the bar, made the page taller than
+     the viewport and brought the scrollbar back. It is a credit, not a
+     control; the source link beside it stays. */
+  .byline { display: none; }
   .bar nav { gap: .8rem; }
-  .also { display: none; }
   #board { padding: .15rem; }
 }
 
@@ -101,6 +97,13 @@ main.prose hr { border: 0; border-top: 1px solid var(--line); margin: 3rem 0 1.5
 main.prose .lede { color: #ddd; }
 main.prose ul { padding-left: 1.2rem; }
 main.prose li { margin: .4rem 0; }
+
+/* The siblings on /projects/. A name and one sentence on why it is worth a
+   click, which is what a bare name in a footer list never gave. */
+.siblings { list-style: none; padding: 0; margin: 1.2rem 0 0; }
+.siblings li { margin: 0 0 1.4rem; }
+.siblings > li > a { font-size: 1.05rem; letter-spacing: .02em; }
+.siblings p { margin: .2rem 0 0; color: var(--dim); }
 
 /* The consent prompt is styled as a board panel rather than a modern
    cookie bar, but it stays a native <dialog>: showModal() gives focus

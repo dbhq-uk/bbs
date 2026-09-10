@@ -1,7 +1,9 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 
-/// Two entry points: the board, and the ASCII art tool.
+/// Four entry points. Every page here has to be listed: rollup only walks
+/// from these, so an HTML file that is not named is simply never built and
+/// its URL 404s in production while working perfectly in `vite dev`.
 ///
 /// The tool has its own URL because it has to be findable. The board's
 /// keyword cluster is tiny - "telnet bbs" is 390 searches a month
@@ -13,6 +15,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "index.html"),
         about: resolve(__dirname, "about/index.html"),
+        projects: resolve(__dirname, "projects/index.html"),
         tool: resolve(__dirname, "ascii-art-generator/index.html"),
       },
     },

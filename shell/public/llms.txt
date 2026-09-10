@@ -36,5 +36,8 @@
 
 ## Related
 
-- DBHQ: https://dbhq.uk/
-- Sister project: https://modem.dbhq.uk/
+- DBHQ, the practice behind all of these: https://dbhq.uk/
+- modem, a real Bell 103 dial-up handshake you can hear: https://modem.dbhq.uk/
+- heliograph, debugging a machine you cannot log into: https://heliograph.dbhq.uk/
+- Skills, agent skills for Claude Code and Codex: https://skills.dbhq.uk/
+- All of them, on this site: https://bbs.dbhq.uk/projects/
