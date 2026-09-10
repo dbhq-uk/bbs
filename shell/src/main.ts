@@ -1,7 +1,7 @@
 import init, { font_bytes_for, render_ansi_art, render_art, render_document, render_image, render_lines, version }
   from "bbs-core";
 import { Terminal, isNarrow, type Screen } from "./terminal";
-import { onKey } from "./keyboard";
+import { asCommand, onKey } from "./keyboard";
 import { attachTouch, focusFor, makeHiddenInput, type Hot, type TextKind } from "./touch";
 import { nextState, type State } from "./board/state";
 import {
@@ -233,11 +233,19 @@ function loadTurnstile(timeoutMs = 12000): Promise<{ render: Function } | null> 
 }
 
 async function handleKey(key: string) {
+  // The key AS TYPED, and the key as a command. Text fields get `key`;
+  // anything compared against a menu letter gets `cmd`.
+  //
+  // Keeping both is the whole fix: the board's commands are case-insensitive
+  // and its two text fields are not, and folding case at the input could not
+  // tell them apart.
+  const cmd = asCommand(key);
+
   // The rotate screen is a display state, not a board state, so it is
   // answered here rather than in nextState - the board underneath has not
   // moved and must not.
   if (showingRotate()) {
-    if (key === "C" || key === "Enter") {
+    if (cmd === "C" || cmd === "Enter") {
       carriedOn = true;
       term.fit();
       redraw();
@@ -265,14 +273,14 @@ async function handleKey(key: string) {
       input = input.slice(0, -1);
       return redraw();
     }
-    if (key.length === 1 && key !== "Q" && !(state.screen === "conference" && "NP".includes(key))) {
+    if (key.length === 1 && cmd !== "Q" && !(state.screen === "conference" && "NP".includes(cmd))) {
       input += key;
       return redraw();
     }
   }
 
   const before = state.screen;
-  state = nextState(state, key);
+  state = nextState(state, cmd);
 
   if (state.screen !== before) {
     input = "";

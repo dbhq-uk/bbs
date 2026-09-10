@@ -127,6 +127,10 @@ export function attachTouch(opts: {
     if (keys) onKeys(keys);
   });
 
+  // Characters are passed through as typed - see onKey in keyboard.ts for
+  // why folding case at the input is wrong. Pasting a URL is the clearest
+  // case: uppercasing it on the way in breaks every mixed-case path.
+  //
   // Characters come from beforeinput, not keydown.
   //
   // A soft keyboard reports keydown with keyCode 229 and no useful key for
@@ -143,7 +147,7 @@ export function attachTouch(opts: {
     ev.preventDefault();
     switch (ev.inputType) {
       case "insertText":
-        if (ev.data) onKeys([...ev.data].map((c) => (c.length === 1 ? c.toUpperCase() : c)));
+        if (ev.data) onKeys([...ev.data]);
         return;
       case "insertLineBreak":
         return onKeys(["Enter"]);
@@ -151,7 +155,7 @@ export function attachTouch(opts: {
         return onKeys(["Backspace"]);
       case "insertFromPaste": {
         const text = ev.dataTransfer?.getData("text") ?? ev.data ?? "";
-        if (text) onKeys([...text].map((c) => c.toUpperCase()));
+        if (text) onKeys([...text]);
         return;
       }
     }
