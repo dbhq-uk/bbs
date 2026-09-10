@@ -52,8 +52,17 @@
     <link rel="stylesheet" href="/site.css" />
     <style>
       .sysop { display: flex; gap: 1.75rem; align-items: flex-start; flex-wrap: wrap; }
+      /* height:auto is load-bearing, not tidiness.
+
+         The img carries width="608" height="752" so the browser can reserve
+         the right box before the file arrives. Those attributes are applied
+         as PRESENTATIONAL HINTS, which is to say real CSS at the bottom of
+         the cascade - so `width: 240px` here overrode the width hint and
+         nothing overrode the height one. The portrait was drawn 240 wide by
+         752 tall: the aspect ratio thrown away and the face stretched to
+         three times its height. */
       .sysop img {
-        width: 240px; image-rendering: pixelated;
+        width: 240px; height: auto; image-rendering: pixelated;
         border: 1px solid var(--line); background: #000;
       }
       .sysop .who { flex: 1 1 20ch; }
