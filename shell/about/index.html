@@ -66,10 +66,10 @@
       <a class="brand" href="/">DBHQ//BBS</a>
       <span class="tag">the world wide web, as a bulletin board</span>
       <nav>
-        <a href="/about/" aria-current="page">About</a>
         <a href="/ascii-art-generator/">ASCII Art</a>
         <a href="https://modem.dbhq.uk/">Modem</a>
         <a href="/projects/">DBHQ</a>
+        <a href="/about/" aria-current="page">About</a>
       </nav>
     </header>
 
@@ -125,7 +125,8 @@
         machine. A small Cloudflare Worker relays page fetches, because a
         browser cannot request another site directly; it returns bytes and
         never decides how anything looks. The board runs at 132x50 in an 8x16
-        cell, which is VESA text mode 10Bh.
+        cell, which is VESA text mode 10Bh, and drops to 80x25 on a screen
+        too narrow to read that - the mode a real board actually used.
         <a href="https://github.com/dbhq-uk/bbs">The source is on GitHub</a>.
       </p>
 
@@ -144,7 +145,10 @@
             Converted by the board's own quantiser. Sixteen colours chosen for
             this picture and snapped to what a VGA card could show, with the
             full CP437 character set used as texture: look closely and the
-            hair and beard are letters.
+            hair and beard are letters. Rendered in the 8x8 cell of the 80x50
+            mode rather than the board's own 8x16: a cell is one glyph and so
+            one sample, and at 8x16 a face gets two-thirds as many samples
+            down as across, which smears every feature that is wide and thin.
           </figcaption>
         </figure>
         <div class="who">
