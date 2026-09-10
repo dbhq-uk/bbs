@@ -1,4 +1,9 @@
-/// The glyph bitmap is 8 pixels wide. The CELL is 9.
+import { chooseMode, MODE_132, type Mode } from "./modes";
+
+export { MODE_25, MODE_50, MODE_132, chooseMode, isNarrow, scaledCellW } from "./modes";
+export type { Mode } from "./modes";
+
+/// The glyph bitmap is 8 pixels wide. The CELL is sometimes 9.
 ///
 /// Real VGA text mode drew 80 columns into 720 pixels, not 640: the
 /// character generator emitted a ninth column after each glyph. For most
@@ -8,55 +13,13 @@
 /// every eight pixels.
 ///
 /// Drawing at 8 is what a modern terminal does and it is subtly wrong - the
-/// aspect is off by 12% and every long box rule is dashed.
+/// aspect is off by 12% and every long box rule is dashed. The 132-column
+/// VESA modes really are 8-dot, so the cell width belongs to the mode.
 export const GLYPH_W = 8;
 
-/// THE BOARD RUNS AT 132x50.
-///
-/// VESA text mode 10Bh with the 8x16 font: 1056x800. DOS terminal programs
-/// - Telix, Qmodem, Telemate - used the 132-column modes to show more of a
-/// screen at once, and this is 6,600 cells against 80x25's 2,000, which is
-/// what both the image quantiser and the web projection wanted.
-///
-/// The cell is 8 wide here, not 9. The ninth column belongs to the 720x400
-/// 80-column mode, where it carried the inter-character gap and repeated
-/// the eighth column for box drawing; the 132-column modes are 8-dot.
+/// The 132-column cell, exported for the ASCII art tool, which is a
+/// separate page in a fixed mode and does not switch.
 export const CELL_W = 8;
-export const COLS = 132;
-
-/// The real text modes this board can be in.
-///
-/// `pixelAspect` is how much taller than wide a pixel was. These modes were
-/// displayed on 4:3 glass, so the pixels were rarely square: the
-/// framebuffer was wide and the tube stretched it back.
-///
-/// BUT SCALING A BITMAP FONT IS THE ENEMY OF READING IT. The board first ran
-/// at 132x60, which is 1056x480 - 2.20:1, needing a 1.65x vertical stretch
-/// to reach 4:3. Nearest-neighbour at a non-integer factor duplicates some
-/// glyph rows and not others, so an 8x8 font came out lumpy and hard to
-/// read. Smoothing it instead would blur it, which is worse.
-///
-/// So the default mode is chosen to need NO scaling. 132x50 with the 8x16
-/// font is 1056x800, which is 1.32:1 - 4:3 to within one percent - and it
-/// uses the tall VGA font rather than the cramped 8x8 one. VESA mode 10Bh,
-/// as real as 10Ch, and 6,600 cells against 80x25's 2,000.
-///
-/// Where a mode does need correcting, it is applied at DISPLAY time only.
-/// The framebuffer keeps its real dimensions, so a cell is still 8x8 or
-/// 8x16 to the quantiser and to every glyph mask; only the CSS box changes.
-/// Baking it into the cell would distort the glyphs and change what the
-/// quantiser matches against.
-export const MODE_25 = { cols: 80, rows: 25, cellH: 16, cellW: 9, pixelAspect: 1.35 } as const;
-export const MODE_50 = { cols: 80, rows: 50, cellH: 8, cellW: 9, pixelAspect: 1.35 } as const;
-export const MODE_132 = { cols: 132, rows: 50, cellH: 16, cellW: 8, pixelAspect: 1.0 } as const;
-
-export const CELL_H = MODE_132.cellH;
-export const ROWS = MODE_132.rows;
-
-/// The line-drawing range whose ninth column repeats the eighth.
-function joinsAcross(code: number): boolean {
-  return code >= 0xc0 && code <= 0xdf;
-}
 
 /// Must match core/src/screen.rs PALETTE exactly. These are the standard
 /// VGA values, not a modern terminal's reinterpretation of them.
@@ -75,12 +38,13 @@ export type Cell = { ch: number; fg: number; bg: number };
 export type Screen = { w: number; h: number; cells: Cell[] };
 export type Rgb = [number, number, number];
 
-export function cellRect(cx: number, cy: number, cellH: number = CELL_H) {
-  return { x: cx * CELL_W, y: cy * cellH, w: CELL_W, h: cellH };
+/// The line-drawing range whose ninth column repeats the eighth.
+function joinsAcross(code: number): boolean {
+  return code >= 0xc0 && code <= 0xdf;
 }
 
-export function glyphAtlasLayout(cellH: number = CELL_H) {
-  return { cols: 16, rows: 16, width: 16 * CELL_W, height: 16 * cellH };
+export function glyphAtlasLayout(cellH: number, cellW: number) {
+  return { cols: 16, rows: 16, width: 16 * cellW, height: 16 * cellH };
 }
 
 export class Terminal {
@@ -91,9 +55,10 @@ export class Terminal {
   private atlases: HTMLCanvasElement[] = [];
   private palette: string[] = PALETTE_CSS;
   private fonts: Record<number, Uint8Array>;
-  private cellH: number = MODE_132.cellH;
-  private rows: number = MODE_132.rows;
-  private pixelAspect: number = MODE_132.pixelAspect;
+  private current: Mode = MODE_132;
+  /// Set while fit() is applying a mode, so the resize it triggers cannot
+  /// re-enter the chooser.
+  private switching = false;
 
   /// `fonts` maps cell height to font bytes: 16 always, 8 for the 80x50
   /// mode. Both come from the core so there is one source for the glyphs.
@@ -105,16 +70,18 @@ export class Terminal {
     if (!ctx) throw new Error("no 2d context");
     this.ctx = ctx;
 
-    this.setMode(MODE_132.rows, MODE_132.cellH, MODE_132.pixelAspect);
+    this.apply(MODE_132);
+  }
+
+  get mode(): Mode {
+    return this.current;
   }
 
   /// Switches text mode. A VGA card did this by loading a different font,
   /// which is exactly what happens here.
-  setMode(rows: number, cellH: number, pixelAspect = this.pixelAspect) {
-    if (!this.fonts[cellH]) return;
-    this.rows = rows;
-    this.cellH = cellH;
-    this.pixelAspect = pixelAspect;
+  private apply(m: Mode) {
+    if (!this.fonts[m.cellH]) return;
+    this.current = m;
     this.resize();
     this.rebuild();
   }
@@ -130,14 +97,10 @@ export class Terminal {
     this.rebuild();
   }
 
-  get mode() {
-    return { rows: this.rows, cellH: this.cellH };
-  }
-
   private resize() {
     const dpr = window.devicePixelRatio || 1;
-    const w = COLS * CELL_W;
-    const h = this.rows * this.cellH;
+    const w = this.current.cols * this.current.cellW;
+    const h = this.current.rows * this.current.cellH;
 
     // The BACKING STORE stays at the mode's real pixel size, so glyphs are
     // drawn on exact pixel boundaries and stay crisp.
@@ -147,11 +110,41 @@ export class Terminal {
 
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.ctx.imageSmoothingEnabled = false;
-    this.fit();
   }
 
-  /// Sizes the CSS box to fit whatever space the layout gives it, keeping
-  /// the aspect the mode is meant to have.
+  /// How much room the board actually has, which is not the same as how
+  /// much room the layout gave it.
+  ///
+  /// iOS does NOT change window.innerHeight when the soft keyboard opens -
+  /// the layout viewport stays exactly as it was and the keyboard is drawn
+  /// over the top. Sizing to the container alone therefore puts the bottom
+  /// of the board, which is where the input line is, underneath the
+  /// keyboard the caller is typing on. visualViewport is the only thing
+  /// that reports the shrink.
+  private available(box: HTMLElement): { w: number; h: number } {
+    // clientWidth and clientHeight INCLUDE padding, and #board has some.
+    // Sizing the canvas to them therefore makes it taller than the space it
+    // is sitting in by exactly the padding, every time - which is what made
+    // the board page scroll when it is meant to fill the viewport exactly
+    // and never scroll. On a phone that scrollbar is the difference between
+    // the board filling the screen and being a band with black around it.
+    const cs = getComputedStyle(box);
+    const padX = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+    const padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+
+    const w = box.clientWidth - padX;
+    let h = box.clientHeight - padY;
+
+    const vv = window.visualViewport;
+    if (vv) {
+      const top = box.getBoundingClientRect().top;
+      h = Math.min(h, vv.offsetTop + vv.height - top - padY);
+    }
+    return { w: Math.max(0, w), h: Math.max(0, h) };
+  }
+
+  /// Picks the mode for the space available, then sizes the CSS box to fit
+  /// it while keeping the aspect the mode is meant to have.
   ///
   /// Done in script rather than with max-width/max-height because a canvas
   /// takes its intrinsic size from its width and height ATTRIBUTES, and
@@ -173,61 +166,79 @@ export class Terminal {
       requestAnimationFrame(() => this.fit());
       return;
     }
-    const nativeW = COLS * CELL_W;
-    const nativeH = this.rows * this.cellH * this.pixelAspect;
-    const scale = Math.min(
-      1,
-      box.clientWidth / nativeW,
-      box.clientHeight / nativeH,
-    );
+
+    const { w: boxW, h: boxH } = this.available(box);
+    if (boxH === 0) return;
+
+    if (!this.switching) {
+      const want = chooseMode(boxW, boxH, this.current);
+      if (want.cols !== this.current.cols || want.rows !== this.current.rows) {
+        this.switching = true;
+        this.apply(want);
+        this.switching = false;
+      }
+    }
+
+    const nativeW = this.current.cols * this.current.cellW;
+    const nativeH = this.current.rows * this.current.cellH * this.current.pixelAspect;
+    const scale = Math.min(1, boxW / nativeW, boxH / nativeH);
     this.canvas.style.width = `${Math.floor(nativeW * scale)}px`;
     this.canvas.style.height = `${Math.floor(nativeH * scale)}px`;
   }
 
   private rebuild() {
-    const font = this.fonts[this.cellH];
-    this.atlases = this.palette.map((css) => buildAtlas(font, css, this.cellH));
+    const font = this.fonts[this.current.cellH];
+    this.atlases = this.palette.map((css) =>
+      buildAtlas(font, css, this.current.cellH, this.current.cellW),
+    );
   }
 
   clear() {
     this.ctx.fillStyle = this.palette[0];
-    this.ctx.fillRect(0, 0, COLS * CELL_W, this.rows * this.cellH);
+    this.ctx.fillRect(
+      0, 0,
+      this.current.cols * this.current.cellW,
+      this.current.rows * this.current.cellH,
+    );
   }
 
   draw(screen: Screen) {
     this.clear();
-    const layout = glyphAtlasLayout(this.cellH);
-    for (let y = 0; y < Math.min(screen.h, this.rows); y++) {
-      for (let x = 0; x < Math.min(screen.w, COLS); x++) {
+    const { cellW, cellH, cols, rows } = this.current;
+    const layout = glyphAtlasLayout(cellH, cellW);
+    for (let y = 0; y < Math.min(screen.h, rows); y++) {
+      for (let x = 0; x < Math.min(screen.w, cols); x++) {
         const cell = screen.cells[y * screen.w + x];
         if (!cell) continue;
-        const { x: px, y: py } = cellRect(x, y, this.cellH);
+        const px = x * cellW;
+        const py = y * cellH;
 
         if (cell.bg !== 0) {
           this.ctx.fillStyle = this.palette[cell.bg];
-          this.ctx.fillRect(px, py, CELL_W, this.cellH);
+          this.ctx.fillRect(px, py, cellW, cellH);
         }
         if (cell.ch === 32) continue; // space: background only
 
-        const sx = (cell.ch % layout.cols) * CELL_W;
-        const sy = Math.floor(cell.ch / layout.cols) * this.cellH;
+        const sx = (cell.ch % layout.cols) * cellW;
+        const sy = Math.floor(cell.ch / layout.cols) * cellH;
         this.ctx.drawImage(
           this.atlases[cell.fg],
-          sx, sy, CELL_W, this.cellH,
-          px, py, CELL_W, this.cellH,
+          sx, sy, cellW, cellH,
+          px, py, cellW, cellH,
         );
       }
     }
   }
 }
 
-/// Renders all 256 glyphs into a 16x16 grid in one colour, nine pixels wide.
+/// Renders all 256 glyphs into a 16x16 grid in one colour.
 function buildAtlas(
   fontBytes: Uint8Array,
   css: string,
   cellH: number,
+  cellW: number,
 ): HTMLCanvasElement {
-  const layout = glyphAtlasLayout(cellH);
+  const layout = glyphAtlasLayout(cellH, cellW);
   const c = document.createElement("canvas");
   c.width = layout.width;
   c.height = layout.height;
@@ -236,13 +247,14 @@ function buildAtlas(
   const [r, g, b] = hexToRgb(css);
 
   for (let code = 0; code < 256; code++) {
-    const gx = (code % layout.cols) * CELL_W;
+    const gx = (code % layout.cols) * cellW;
     const gy = Math.floor(code / layout.cols) * cellH;
     for (let row = 0; row < cellH; row++) {
       const bits = fontBytes[code * cellH + row];
-      for (let col = 0; col < CELL_W; col++) {
+      for (let col = 0; col < cellW; col++) {
         // The ninth column is not in the font. It repeats the eighth for
         // the line-drawing range and is blank otherwise - the VGA rule.
+        // In an 8-dot mode there is no ninth column and this never fires.
         const on = col < GLYPH_W
           ? (bits >> (7 - col)) & 1
           : joinsAcross(code) && (bits & 1);

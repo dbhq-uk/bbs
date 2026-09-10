@@ -1,7 +1,8 @@
 import init, { font_bytes_for, render_ansi_art, render_art, render_document, render_image, render_lines, version }
   from "bbs-core";
-import { Terminal, COLS, ROWS, type Screen } from "./terminal";
+import { Terminal, isNarrow, type Screen } from "./terminal";
 import { onKey } from "./keyboard";
+import { attachTouch, focusFor, makeHiddenInput, type Hot, type TextKind } from "./touch";
 import { nextState, type State } from "./board/state";
 import {
   conferenceScreen,
@@ -12,12 +13,12 @@ import {
   type Item,
 } from "./board/screens";
 import { loadConference } from "./board/conference";
-import { fetchImage, openUrl, type WebResult } from "./board/web";
+import { fetchImage, fitFor, openUrl, type WebResult } from "./board/web";
 import { CONFERENCES } from "./conferences";
 import { haveSession, openSession, type Meter } from "./gw";
 import { caller, confirm, logon, register } from "./auth";
 import { formKey, formLines, newForm, type Form } from "./board/forms";
-import { loginArt, menuArt, type Art } from "./board/art";
+import { loginArt, menuArt, rotateArt, type Art } from "./board/art";
 import { meterLine } from "./board/screens";
 
 let term: Terminal;
@@ -29,6 +30,14 @@ let doc: Extract<WebResult, { ok: true }> | null = null;
 let input = "";
 let status = "";
 let form: Form | null = null;
+/// The rows the current screen will accept a tap on, refreshed by redraw.
+let hot: Hot[] = [];
+/// Dismissed for the session by [ C ] on the rotate screen. Never
+/// persisted: a caller who rotates back into portrait next time is asking
+/// the same question again.
+let carriedOn = false;
+let keyboard: HTMLInputElement;
+let keyboardKind: TextKind = null;
 
 const wasm = { render_document, render_image, render_ansi_art };
 
@@ -43,9 +52,33 @@ async function boot() {
   // The board is sized to the space between the header and footer, so a
   // window change has to re-fit it or it either overflows and scrolls or
   // leaves a gap.
-  window.addEventListener("resize", () => {
+  const reflow = () => {
     term.fit();
     redraw();
+  };
+  window.addEventListener("resize", reflow);
+  window.addEventListener("orientationchange", reflow);
+  // The soft keyboard opening does not fire `resize` on iOS - the layout
+  // viewport is unchanged and the keyboard is drawn over the top - so the
+  // board has to be told by the visual viewport instead or it renders its
+  // input line underneath the keys.
+  window.visualViewport?.addEventListener("resize", reflow);
+
+  keyboard = makeHiddenInput(document);
+  document.body.appendChild(keyboard);
+  attachTouch({
+    canvas,
+    input: keyboard,
+    rows: () => term.mode.rows,
+    hot: () => hot,
+    swipeable: () => state.screen === "reading",
+    onKeys: (keys) => {
+      for (const k of keys) void handleKey(k);
+      // Synchronous, and deliberately not inside redraw: iOS raises the
+      // keyboard only from within a real user gesture, and this is still
+      // inside the pointerup that produced the key.
+      syncKeyboard();
+    },
   });
   redraw();
 
@@ -200,6 +233,18 @@ function loadTurnstile(timeoutMs = 12000): Promise<{ render: Function } | null> 
 }
 
 async function handleKey(key: string) {
+  // The rotate screen is a display state, not a board state, so it is
+  // answered here rather than in nextState - the board underneath has not
+  // moved and must not.
+  if (showingRotate()) {
+    if (key === "C" || key === "Enter") {
+      carriedOn = true;
+      term.fit();
+      redraw();
+    }
+    return;
+  }
+
   // Forms own every key except the abandon key, so a password containing
   // "q" does not drop the caller back to the menu.
   if ((state.screen === "logon" || state.screen === "register") && form) {
@@ -284,7 +329,8 @@ async function go(url: string) {
   status = "CONNECTING...";
   redraw();
 
-  const result = await openUrl(url, wasm);
+  const fit = fitFor(term.mode.cols, term.mode.rows);
+  const result = await openUrl(url, wasm, fit);
   if (!result.ok) {
     status = result.message;
     return redraw();
@@ -299,7 +345,7 @@ async function go(url: string) {
   // Images are fetched after the text is on screen, so the reader is never
   // waiting on them, and each is appended as its own page.
   for (const img of result.images.slice(0, 4)) {
-    const screen = await fetchImage(img.src, result.finalUrl, wasm);
+    const screen = await fetchImage(img.src, result.finalUrl, wasm, fit);
     if (screen && doc) {
       doc.pages.push(screen);
       redraw();
@@ -363,8 +409,47 @@ function authMessage(code: string): string {
   }
 }
 
+/// Portrait on a device narrow enough to have been given the compact mode.
+///
+/// Asked of the viewport rather than of screen.orientation, because a
+/// desktop window taller than it is wide is the same shape and has the same
+/// problem, and because orientation lock makes the API answer a question
+/// nobody asked.
+function showingRotate(): boolean {
+  if (carriedOn || !term) return false;
+  if (!isNarrow(term.mode)) return false;
+  return window.innerHeight > window.innerWidth;
+}
+
+/// Raises or drops the OS keyboard to match the screen on display.
+///
+/// Only ever acts on a CHANGE. Re-focusing an already-focused input on
+/// every redraw makes the keyboard flicker on Android and steals the
+/// caret on desktop.
+function keyboardFor(): TextKind {
+  if (showingRotate()) return null;
+  if (state.screen === "web") return "url";
+  if ((state.screen === "logon" || state.screen === "register") && form) {
+    return form.fields[form.at]?.secret ? "password" : "text";
+  }
+  return null;
+}
+
+function syncKeyboard() {
+  const want = keyboardFor();
+  if (want === keyboardKind) return;
+  keyboardKind = want;
+  if (want) focusFor(keyboard, want);
+  else keyboard.blur();
+}
+
 function redraw() {
   if (!term) return;
+  if (showingRotate()) {
+    const a = rotateArt(term.mode);
+    hot = a.hot;
+    return term.draw(render_art(a.lines, a.fg, a.bg, term.mode.cols, term.mode.rows) as Screen);
+  }
   // Every screen except a quantised image is drawn in the DOS sixteen. An
   // image carrying its own palette adopts it below; forgetting to put it
   // back would tint the whole board with the last picture's colours.
@@ -374,10 +459,10 @@ function redraw() {
   const s = state;
   switch (s.screen) {
     case "login":
-      return art(loginArt(meter ? meterLine(meter) : "", status));
+      return art(loginArt(meter ? meterLine(meter) : "", status, narrow()));
     case "menu": {
       const c = caller();
-      return art(menuArt(c, meter ? meterLine(meter) : "", status, input));
+      return art(menuArt(c, meter ? meterLine(meter) : "", status, input, narrow()));
     }
     case "web":
       return paint(webScreen(input, status, meter));
@@ -386,7 +471,11 @@ function redraw() {
       return paint(form ? formLines(form) : ["", "   ..."]);
     case "conference": {
       const c = CONFERENCES.find((x) => x.id === s.id)!;
-      return paint(conferenceScreen(c.name, items, s.page, input, status));
+      const listing = conferenceScreen(
+        c.name, items, s.page, input, status, term.mode.rows, term.mode.cols,
+      );
+      hot = listing.hot;
+      return paint(listing.lines, false);
     }
     case "reading": {
       const screen = doc?.pages[s.page];
@@ -398,18 +487,26 @@ function redraw() {
   }
 }
 
+function narrow(): boolean {
+  return isNarrow(term.mode);
+}
+
 /// Paints a coloured art screen. The core does the CP437 folding.
 function art(a: Art) {
-  term.draw(render_art(a.lines, a.fg, a.bg, COLS, ROWS) as Screen);
+  hot = a.hot;
+  term.draw(render_art(a.lines, a.fg, a.bg, term.mode.cols, term.mode.rows) as Screen);
 }
 
 /// Paints plain lines. The core does the CP437 folding so the shell never
 /// has to know about code pages.
-function paint(lines: string[]) {
+function paint(lines: string[], clearHot = true) {
+  if (clearHot) hot = [];
   const colours = lines.map((l) =>
     l.includes("b b s") ? 11 : l.trimStart().startsWith("W)") ? 14 : 7,
   );
-  term.draw(render_lines(lines, new Uint8Array(colours), COLS, ROWS) as Screen);
+  term.draw(
+    render_lines(lines, new Uint8Array(colours), term.mode.cols, term.mode.rows) as Screen,
+  );
 }
 
 boot();

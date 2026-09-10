@@ -7,6 +7,12 @@ html, body { margin: 0; background: #000; color: #bbb; }
 body {
   font: 15px/1.6 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
   min-height: 100vh;
+  /* dvh, because 100vh on a mobile browser is the viewport with the URL bar
+     RETRACTED. With the bar showing, 100vh is taller than the window, so the
+     board page - which is meant to fill the screen exactly and never
+     scroll - overflowed by the height of the bar and scrolled. That is why
+     the board rendered as a thin band with black above and below it. */
+  min-height: 100dvh;
   display: flex; flex-direction: column;
 }
 
@@ -42,13 +48,48 @@ footer { border-top: 1px solid var(--line); flex: 0 0 auto; }
    to shrink below its content and the canvas pushes the footer off screen. */
 #board {
   flex: 1 1 auto; min-height: 0;
-  display: grid; place-items: center; padding: .5rem;
+  position: relative; padding: .5rem;
 }
 /* The canvas keeps its real backing store and is scaled to fit by CSS, so
-   the framebuffer stays exact while the box adapts to the window. */
+   the framebuffer stays exact while the box adapts to the window.
+
+   TAKEN OUT OF FLOW ON PURPOSE. In flow it is a chicken and egg: the script
+   sizes the canvas from #board's clientHeight, the canvas is then part of
+   what #board is tall enough to hold, and clientHeight comes back larger on
+   the next measure. The box ratchets up by roughly one bar height, the
+   footer is pushed under the fold, and the page scrolls - which is what the
+   board page exists not to do. Absolute positioning means the canvas cannot
+   influence the box it is measured against, so the measurement is stable. */
 #board canvas {
-  max-width: 100%; max-height: 100%; width: auto; height: auto;
+  position: absolute;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
   image-rendering: pixelated;
+  /* The board reads swipes and taps itself. Without this the browser claims
+     the gesture first and a page turn scrolls the document instead, and a
+     double tap zooms into a screen that is already scaled to fit. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* THE BOARD NEEDS THE HEIGHT MORE THAN THE CHROME DOES.
+   On a landscape phone the two bars and the cross-link block cost about a
+   third of the window, and the board is scaled to whatever is left - so
+   every row of chrome comes straight off the size of the text. The
+   navigation stays: it is the only route to /about/, the ASCII tool and
+   the source. The cross-link block does not, because /about/ carries the
+   same links and is one tap away. */
+@media (max-height: 560px), (max-width: 700px) {
+  :root { --bar: 26px; }
+  .bar { gap: .75rem; padding: 0 .6rem; font-size: .72rem; }
+  /* The footer's sentence wraps to two lines in a 393px window, inside a bar
+     that is a fixed 26px tall - so it overflowed the bar, made the page
+     taller than the viewport and brought the scrollbar back. It is a
+     description, not a control; the links beside it stay. */
+  footer .bar > span { display: none; }
+  .bar nav { gap: .8rem; }
+  .also { display: none; }
+  #board { padding: .15rem; }
 }
 
 main.prose { flex: 1 1 auto; max-width: 76ch; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
