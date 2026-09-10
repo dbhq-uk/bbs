@@ -7,6 +7,12 @@ html, body { margin: 0; background: #000; color: #bbb; }
 body {
   font: 15px/1.6 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
   min-height: 100vh;
+  /* dvh, because 100vh on a mobile browser is the viewport with the URL bar
+     RETRACTED. With the bar showing, 100vh is taller than the window, so the
+     board page - which is meant to fill the screen exactly and never
+     scroll - overflowed by the height of the bar and scrolled. That is why
+     the board rendered as a thin band with black above and below it. */
+  min-height: 100dvh;
   display: flex; flex-direction: column;
 }
 
@@ -16,7 +22,7 @@ body {
   font-size: .8rem; color: var(--dim);
 }
 header.bar { border-bottom: 1px solid var(--line); }
-footer.bar { border-top: 1px solid var(--line); }
+footer { border-top: 1px solid var(--line); flex: 0 0 auto; }
 .bar a { color: var(--cyan); text-decoration: none; }
 .bar a:hover { text-decoration: underline; }
 .bar .brand { color: var(--cyan); font-weight: 600; letter-spacing: .06em; }
@@ -25,18 +31,61 @@ footer.bar { border-top: 1px solid var(--line); }
 .bar .tag { color: var(--dim); }
 @media (max-width: 640px) { .bar .tag { display: none; } }
 
+/* The footer carries the byline and the source link, and nothing else.
+
+   It used to hold an "Also from DBHQ" list - four sibling names with a
+   clause each, in the row nobody reads, repeated on every page. On the
+   board page it also cost the board screen height, which is the one thing
+   that page cannot spare. The same four live at /projects/ now, with room
+   to say why each is worth a click, and the nav sends people there. */
+.byline { color: var(--dim); }
+.byline a { color: var(--cyan); text-decoration: none; }
+.byline a:hover { text-decoration: underline; }
+
 /* The board fills whatever is left between the two bars and never causes a
    scrollbar. min-height:0 is load-bearing: without it a flex child refuses
    to shrink below its content and the canvas pushes the footer off screen. */
 #board {
   flex: 1 1 auto; min-height: 0;
-  display: grid; place-items: center; padding: .5rem;
+  position: relative; padding: .5rem;
 }
 /* The canvas keeps its real backing store and is scaled to fit by CSS, so
-   the framebuffer stays exact while the box adapts to the window. */
+   the framebuffer stays exact while the box adapts to the window.
+
+   TAKEN OUT OF FLOW ON PURPOSE. In flow it is a chicken and egg: the script
+   sizes the canvas from #board's clientHeight, the canvas is then part of
+   what #board is tall enough to hold, and clientHeight comes back larger on
+   the next measure. The box ratchets up by roughly one bar height, the
+   footer is pushed under the fold, and the page scrolls - which is what the
+   board page exists not to do. Absolute positioning means the canvas cannot
+   influence the box it is measured against, so the measurement is stable. */
 #board canvas {
-  max-width: 100%; max-height: 100%; width: auto; height: auto;
+  position: absolute;
+  top: 50%; left: 50%; transform: translate(-50%, -50%);
   image-rendering: pixelated;
+  /* The board reads swipes and taps itself. Without this the browser claims
+     the gesture first and a page turn scrolls the document instead, and a
+     double tap zooms into a screen that is already scaled to fit. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* THE BOARD NEEDS THE HEIGHT MORE THAN THE CHROME DOES.
+   On a landscape phone the two bars cost a fifth of the window, and the
+   board is scaled to whatever is left - so every row of chrome comes
+   straight off the size of the text. The navigation stays: it is the only
+   route to /about/, the ASCII tool, /projects/ and the source. */
+@media (max-height: 560px), (max-width: 700px) {
+  :root { --bar: 26px; }
+  .bar { gap: .75rem; padding: 0 .6rem; font-size: .72rem; }
+  /* The byline wraps to two lines in a 393px window, inside a bar that is a
+     fixed 26px tall - so it overflowed the bar, made the page taller than
+     the viewport and brought the scrollbar back. It is a credit, not a
+     control; the source link beside it stays. */
+  .byline { display: none; }
+  .bar nav { gap: .8rem; }
+  #board { padding: .15rem; }
 }
 
 main.prose { flex: 1 1 auto; max-width: 76ch; margin: 0 auto; padding: 2.5rem 1.5rem 5rem; }
@@ -48,6 +97,13 @@ main.prose hr { border: 0; border-top: 1px solid var(--line); margin: 3rem 0 1.5
 main.prose .lede { color: #ddd; }
 main.prose ul { padding-left: 1.2rem; }
 main.prose li { margin: .4rem 0; }
+
+/* The siblings on /projects/. A name and one sentence on why it is worth a
+   click, which is what a bare name in a footer list never gave. */
+.siblings { list-style: none; padding: 0; margin: 1.2rem 0 0; }
+.siblings li { margin: 0 0 1.4rem; }
+.siblings > li > a { font-size: 1.05rem; letter-spacing: .02em; }
+.siblings p { margin: .2rem 0 0; color: var(--dim); }
 
 /* The consent prompt is styled as a board panel rather than a modern
    cookie bar, but it stays a native <dialog>: showModal() gives focus

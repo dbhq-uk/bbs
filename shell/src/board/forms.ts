@@ -29,7 +29,10 @@ export function formLines(f: Form): string[] {
     out.push("");
   });
   if (f.status) out.push(`   ${f.status}`, "");
-  out.push("   RETURN to continue   Q to abandon");
+  // ESC, not Q. A form takes every character as typed, so Q is a letter
+  // here and always was - the legend named a key the form cannot honour
+  // without making it impossible to have a Q in a password.
+  out.push("   RETURN to continue   ESC to abandon");
   return out;
 }
 
@@ -53,9 +56,11 @@ export function formKey(f: Form, key: string): boolean {
     return false;
   }
   if (key.length === 1) {
-    // Passwords keep their case; everything else on a board was upper.
-    const ch = field.secret ? key : key;
-    f.values[field.key] = (f.values[field.key] ?? "") + ch;
+    // As typed. The comment here used to say "passwords keep their case"
+    // above a line that read `field.secret ? key : key` - a no-op guarding
+    // against something that had already happened one layer up, where every
+    // key was uppercased before a form ever saw it.
+    f.values[field.key] = (f.values[field.key] ?? "") + key;
   }
   return false;
 }

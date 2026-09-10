@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Deploy the board, then purge the edge cache.
+# Deploy the board by hand: build, ship, purge the edge, prove it is live.
 #
-# THE PURGE IS NOT OPTIONAL. Cloudflare caches robots.txt, sitemap.xml and
-# llms.txt at the zone, and a deploy does not invalidate them. This bit us
-# on 9 Sep 2026: a new robots.txt and llms.txt were live on the
-# workers.dev hostname and the zone was still serving a cached 404 and
-# Cloudflare's own directive-free managed robots.txt. Both looked like
-# deploy failures and were cache.
+# THIS IS THE FALLBACK, not the route. Pushing to main runs
+# .github/workflows/deploy.yml, which does these same four steps in the same
+# order by calling these same scripts. Use this when CI is unavailable, and
+# check first that CI is not already shipping the same commit:
+#
+#   gh run list --repo dbhq-uk/bbs --workflow deploy.yml --limit 3
 #
 #   ./scripts/deploy.sh
 set -euo pipefail
@@ -26,29 +26,5 @@ wasm-pack build core --target web --release
 echo "==> deploying"
 npx wrangler deploy
 
-echo "==> purging the edge"
-curl -fsS -X POST \
-  "https://api.cloudflare.com/client/v4/zones/${CLOUDFLARE_ZONE_ID}/purge_cache" \
-  -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{"files":[
-        "https://bbs.dbhq.uk/",
-        "https://bbs.dbhq.uk/index.html",
-        "https://bbs.dbhq.uk/robots.txt",
-        "https://bbs.dbhq.uk/sitemap.xml",
-        "https://bbs.dbhq.uk/llms.txt",
-        "https://bbs.dbhq.uk/ascii-art-generator/",
-        "https://bbs.dbhq.uk/about/",
-        "https://bbs.dbhq.uk/site.css",
-        "https://bbs.dbhq.uk/dan-ansi.png",
-        "https://bbs.dbhq.uk/tool.css",
-        "https://bbs.dbhq.uk/analytics.js",
-        "https://bbs.dbhq.uk/consent.js"
-      ]}' >/dev/null
-echo "    purged"
-
-echo "==> verifying"
-for p in "" about/ ascii-art-generator/ robots.txt sitemap.xml llms.txt; do
-  code=$(curl -s -o /dev/null -w "%{http_code}" "https://bbs.dbhq.uk/${p}?cb=$RANDOM")
-  printf '    %-14s %s\n' "/${p}" "$code"
-done
+./scripts/purge.sh
+./scripts/verify.sh

@@ -120,10 +120,28 @@ npx wrangler dev --port 8788 --ip 100.115.72.85
 ```
 
 `wrangler dev` reads `wrangler.toml`, so it serves the built shell and the
-Worker together with the same bindings production has. Deploy with
-`npx wrangler deploy` - the board is a Worker with static assets, not a Pages
-project, because a Pages project cannot hold the atomic rate-limit bindings
-the gateway depends on.
+Worker together with the same bindings production has. The board is a Worker
+with static assets, not a Pages project, because a Pages project cannot hold
+the atomic rate-limit bindings the gateway depends on.
+
+## Deploying
+
+**Merging to `main` is the deploy.** `.github/workflows/deploy.yml` builds the
+core and the shell, runs `wrangler deploy`, purges the edge cache and then
+proves the result is live with a cache-buster.
+
+The purge is not optional and is the step that gets forgotten by hand: on
+9 Sep 2026 a new `robots.txt` and `llms.txt` were live on the workers.dev
+hostname while the zone still served a cached 404 and Cloudflare's own managed
+`robots.txt`. Both looked like deploy failures and were cache.
+
+`./scripts/deploy.sh` does the same four steps by hand, by calling the same
+scripts CI does, and is the CI-unavailable fallback rather than the route.
+Check CI is not already shipping the same commit first:
+
+```bash
+gh run list --repo dbhq-uk/bbs --workflow deploy.yml --limit 3
+```
 
 **Toolchain note.** wasm-pack 0.13.1 bundles a `wasm-opt` predating the bulk-memory proposal, while Rust 1.98 emits `memory.fill` by default. The build fails with `error validating input` unless `wasm-opt` is passed `--enable-bulk-memory`, which `core/Cargo.toml` does. Setting `wasm-opt = false` also builds but silently forfeits the size optimisation.
 
