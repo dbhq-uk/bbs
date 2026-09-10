@@ -40,14 +40,62 @@ function conferenceUrls(): string[] {
   return urls;
 }
 
+/// Where an item SENDS a reader, which is a different host from the feed on
+/// three of the four conferences.
+function destinationUrls(): string[] {
+  const src = readFileSync(
+    new URL("../shell/src/conferences.ts", import.meta.url).pathname,
+    "utf8",
+  );
+  const urls = [...src.matchAll(/destination:\s*"([^"]+)"/g)].map((m) => m[1]);
+  expect(urls.length, "no destinations parsed").toBeGreaterThan(0);
+  return urls;
+}
+
 describe("every conference is reachable by a guest", () => {
   const allow = allowlistHosts();
 
   for (const url of conferenceUrls()) {
-    it(`allows ${new URL(url).host}`, () => {
+    it(`allows the ${new URL(url).host} feed`, () => {
       expect(siteMatches(allow, url)).toBe(true);
     });
   }
+
+  /// The half the original test missed.
+  ///
+  /// Checking only the feed proved a conference could be LISTED, not that
+  /// anything in it could be OPENED - and those are different hosts. Every
+  /// GitHub item was refused for months with this file green, because
+  /// api.github.com was allowed and github.com, where the items go, was
+  /// not.
+  for (const url of destinationUrls()) {
+    it(`allows opening an item on ${new URL(url).host}`, () => {
+      expect(siteMatches(allow, url)).toBe(true);
+    });
+  }
+
+  /// A destination declared and never used is as broken as one that is
+  /// missing, and reads as covered.
+  it("declares a destination for every conference", () => {
+    expect(destinationUrls().length).toBe(conferenceUrls().length);
+  });
+});
+
+describe("Hacker News items point at the thread", () => {
+  /// A story's own URL is any host on the web, so it can never be
+  /// allowlisted. If this ever goes back to i.url the conference silently
+  /// becomes members-only again for almost every item, and the destination
+  /// check above would still pass - it only knows what conferences.ts
+  /// declares.
+  it("never falls back to the story's own URL", () => {
+    const src = readFileSync(
+      new URL("../shell/src/board/conference.ts", import.meta.url).pathname,
+      "utf8",
+    );
+    const body = src.slice(src.indexOf("function resolveHn"));
+    expect(body).toContain("news.ycombinator.com/item?id=");
+    expect(body, "resolveHn is using the story URL again").not.toMatch(/url:\s*i\.url/);
+  });
 });
 
 describe("the relay accepts what the conferences return", () => {

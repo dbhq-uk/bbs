@@ -67,10 +67,22 @@ async function resolveHn(ids: number[]): Promise<Item[]> {
       return r.json() as Promise<{ title?: string; url?: string; id: number }>;
     }),
   );
+  // THE THREAD, NOT THE STORY, and for everyone rather than only for
+  // guests.
+  //
+  // `i.url` is where the story lives - Ars Technica, someone's blog,
+  // anywhere at all - so a guest opening item 3 was refused by the gate
+  // for a host no allowlist could reasonably carry. Only a story with no
+  // external link ever fell back to the permalink, which is on the list,
+  // so the conference read as broken rather than as gated.
+  //
+  // Pointing every item at the discussion fixes that and is the better
+  // board anyway: a message base shows you the thread, and the thread
+  // links out. A member who wants the article pastes it into the W door.
   return items
     .filter((i) => i.title)
     .map((i) => ({
       title: i.title!,
-      url: i.url ?? `https://news.ycombinator.com/item?id=${i.id}`,
+      url: `https://news.ycombinator.com/item?id=${i.id}`,
     }));
 }
