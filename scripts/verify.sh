@@ -18,6 +18,32 @@ CB="${GITHUB_SHA:-$RANDOM}"
 fail=0
 note() { printf '    %-52s %s\n' "$1" "$2"; }
 
+# Fetch a URL, retrying a non-200 for a bounded time.
+#
+# A DEPLOY IS NOT INSTANT AND THIS RAN AS IF IT WERE. `wrangler deploy`
+# returns once the upload is accepted, not once every edge is serving the new
+# asset manifest, so a path that did not exist in the previous deploy can 404
+# for a few seconds after the command exits. That is exactly what happened
+# when /projects/ was added on 10 Sep 2026: this script failed the deploy,
+# and the page was serving correctly by the time anyone looked.
+#
+# Retrying only helps a path that is on its way up. A genuinely missing or
+# broken URL still fails, roughly twenty seconds later - which is a price
+# worth paying once per deploy to stop a green deploy reporting red.
+#
+# Deliberately NOT applied to the cache-busted staleness checks below: those
+# are asserting on content that is already meant to be live, and retrying
+# them would paper over a failed purge rather than wait out a rollout.
+fetch_code() {
+  local url="$1" follow="${2:-}" code=""
+  for attempt in 1 2 3 4 5 6; do
+    code=$(curl -s ${follow} -o /dev/null -w '%{http_code}' "${url}?cb=${CB}-${attempt}")
+    [ "$code" = "200" ] && { echo "$code"; return; }
+    sleep 3
+  done
+  echo "$code"
+}
+
 echo "==> every served URL must be reachable"
 # -L, because /index.html and /about/index.html 307 to /  and /about/ before
 # being served. That redirect is correct and asserting on the unfollowed
@@ -25,7 +51,7 @@ echo "==> every served URL must be reachable"
 # because the redirect is the asset server's own canonicalisation, not a
 # rule of ours that could point somewhere unintended.
 while read -r url; do
-  code=$(curl -sL -o /dev/null -w '%{http_code}' "${url}?cb=${CB}")
+  code=$(fetch_code "$url" -L)
   note "${url#"$SITE"}" "$code"
   [ "$code" = "200" ] || fail=1
 done < <(python3 scripts/urls.py)
@@ -40,7 +66,7 @@ if [ -z "$wasm" ]; then
   echo "    no wasm in shell/dist/assets - the core was not built into the shell" >&2
   fail=1
 else
-  code=$(curl -s -o /dev/null -w '%{http_code}' "${SITE}/assets/$(basename "$wasm")?cb=${CB}")
+  code=$(fetch_code "${SITE}/assets/$(basename "$wasm")")
   note "/assets/$(basename "$wasm")" "$code"
   [ "$code" = "200" ] || fail=1
 fi
