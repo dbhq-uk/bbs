@@ -161,7 +161,7 @@ The reason the decoders stay in the browser:
 
 | Build | Raw | Gzipped |
 |---|---|---|
-| Full pipeline | 143,898 B | ~64 KB |
+| Full pipeline | 178,056 B | 77.5 KB |
 
 CI fails above 250 KB gzipped, to catch anyone accidentally pulling in `html5ever` or the `image` crate.
 
