@@ -155,6 +155,57 @@ def local_tone_map(img, subject, base_blur=34.0, base=0.68, detail=1.35):
     return Image.fromarray(np.clip(a * (out_lum / lum)[..., None], 0, 255).astype(np.uint8))
 
 
+# Where the clipped highlights are cut off, as a percentile of the subject's
+# own luminance, and how much of the excess survives.
+#
+# Set from the distribution rather than picked: the face lives at p95 = 152
+# and p98 = 170, then jumps to p99 = 226. That last one percent is clipped
+# rim light with no detail in it, and it is the only thing that reaches the
+# palette's white entry.
+HIGHLIGHT_KNEE = 97
+HIGHLIGHT_RATIO = 0.2
+
+
+def tame_highlights(img, subject, knee_pct=HIGHLIGHT_KNEE, ratio=HIGHLIGHT_RATIO):
+    """Pulls the clipped rim light down so it stops rendering as white.
+
+    WHAT IS LEFT AFTER THE BACKGROUND COMES OUT is a scattering of blown
+    pixels INSIDE the subject: the sun catching the edge of the hair, the top
+    of the shoulder, the line of the jaw. They are not an edge artefact -
+    measured, every one of them sits more than eight pixels inside the
+    silhouette, with the dark edge of the hair outside them - so eroding the
+    mask would not touch them without eating the hair.
+
+    They are 0.8% of the frame at RGB (249,244,236): clipped, neutral, and
+    carrying no detail. Sixteen colours have nothing between "bright skin"
+    and "white", so each one lands on the white entry and reads as a torn
+    paper edge stuck to the subject.
+
+    A knee at the subject's own p97 with a firm ratio brings 250 down to
+    about 178, inside the range the face already occupies, so the quantiser
+    grades them with skin instead of spending its lightest entry on them.
+
+    THE RATIO HAS TO BE FIRM. At 0.35 the white got WORSE, not better -
+    2.2x worse - because it landed those pixels in the 170-200 band, still
+    above every skin tone and still taking a pale entry. Half-compressing a
+    clipped highlight moves the problem rather than removing it.
+
+    This is deliberately narrow. An earlier attempt put the knee at p90 and
+    flattened the whole picture to fix one ear. At p97 the subject's mean
+    luminance moves by one level and its standard deviation by two.
+    """
+    a = np.asarray(img).astype(np.float32)
+    if not subject.any():
+        return img
+    lum = np.maximum(a.mean(2), 1.0)
+    knee = float(np.percentile(lum[subject], knee_pct))
+    tamed = np.minimum(lum, knee) + np.clip(lum - knee, 0, None) * ratio
+    out = a * (tamed / lum)[..., None]
+    # The background is a flat fill and has no highlights to tame.
+    out[~subject] = a[~subject]
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8))
+
+
 def prepare(src_path, out_path, overlay_path=None):
     src = Image.open(src_path).convert("RGB")
     crop = ImageOps.autocontrast(src.crop(CROP), cutoff=1)
@@ -181,6 +232,7 @@ def prepare(src_path, out_path, overlay_path=None):
     out = ImageEnhance.Brightness(out).enhance(1.06)
     out = ImageEnhance.Contrast(out).enhance(1.14)
     out = ImageEnhance.Color(out).enhance(1.06)
+    out = tame_highlights(out, subject)
     out.save(out_path)
     print(f"{out_path}  subject {100 * subject.mean():.0f}% of frame")
 
