@@ -16,12 +16,17 @@
 -- Reachable, not listed, for the same reason as the feeds in 0002: an item
 -- points here, but the curated menu of places worth visiting is a
 -- different, shorter list.
--- Guarded, because this cannot rely on being run exactly once. `sites` has
--- no unique constraint on url, and d1_migrations is empty on the live
--- database - the schema was built by hand, so `wrangler d1 migrations list`
--- reports 0001 and 0002 as still pending and applying them would re-run
--- their DDL. Until that is reconciled every migration here has to be safe
--- to apply twice.
+-- Guarded, because `sites` has no unique constraint on url.
+--
+-- This was written when it could not rely on being run exactly once: the
+-- live schema had been built by hand and d1_migrations was empty, so
+-- `wrangler d1 migrations list` reported every migration as pending and
+-- running the runner would have re-executed 0001's DDL and duplicated
+-- 0002's inserts. The ledger was backfilled on 15 Sep 2026 and the runner
+-- is usable again, so a new migration no longer has to be idempotent.
+--
+-- The guard stays here anyway. It costs nothing, and this file has already
+-- been applied by hand more than once.
 INSERT INTO sites (name, url, sort, listed)
 SELECT 'GitHub', 'https://github.com/', 120, 0
 WHERE NOT EXISTS (SELECT 1 FROM sites WHERE url = 'https://github.com/');
