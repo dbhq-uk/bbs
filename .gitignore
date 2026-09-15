@@ -11,6 +11,10 @@ playwright-report/
 package-lock.json
 .dev.vars
 
+# Python bytecode from the generators under design/ and the deploy's own
+# scripts/urls.py, which CI byte-compiles as a syntax check.
+__pycache__/
+
 # Terraform. Neither the provider cache nor state belongs in git: .terraform
 # is machine-local, and state stores resource attributes verbatim, including
 # values that were never meant to be read. That is precisely why the state

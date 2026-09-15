@@ -1,4 +1,3 @@
-import { CONFERENCES } from "../conferences";
 import type { Meter } from "../gw";
 
 /// The failure the spec specifies. Containment is what lets an unwinnable
@@ -43,67 +42,15 @@ export function gatewayMessage(reason: string): string {
   }
 }
 
-const D = "═"; // double horizontal
-const V = "║"; // double vertical
-const TL = "╔";
-const TR = "╗";
-const BL = "╚";
-const BR = "╝";
-
-function box(lines: string[], width = 46): string[] {
-  const pad = (s: string) => s + " ".repeat(Math.max(0, width - 2 - s.length));
-  return [
-    TL + D.repeat(width - 2) + TR,
-    ...lines.map((l) => V + pad(l) + V),
-    BL + D.repeat(width - 2) + BR,
-  ];
-}
-
 /// The metering banner. A real board told you what was left, so the rate
 /// limit is period furniture rather than an error dialog.
 export function meterLine(m: Meter): string {
   return `TIME REMAINING THIS CALL: ${m.minutesLeft} MIN     REQUESTS LEFT: ${m.remaining}`;
 }
 
-export function loginScreen(m: Meter | null, status: string): string[] {
-  return [
-    "",
-    ...box([
-      "",
-      "   b b s . d b h q . u k",
-      "",
-      "   THE WORLD WIDE WEB, AS A BOARD",
-      "",
-    ]).map((l) => "  " + l),
-    "",
-    "    A DBHQ EXPERIMENT",
-    "",
-    m ? "    " + meterLine(m) : "    " + (status || "CONNECTING..."),
-    "",
-    "    PRESS ENTER TO LOG ON",
-  ];
-}
-
-export function menuScreen(m: Meter | null, status: string): string[] {
-  return [
-    "",
-    "   MAIN MENU",
-    "   " + "─".repeat(9),
-    "",
-    ...CONFERENCES.map((c) => `    ${c.key}) ${c.name}`),
-    "",
-    "    W) WORLD WIDE WEB GATEWAY",
-    "",
-    "",
-    "   " + "─".repeat(40),
-    m ? "   " + meterLine(m) : "",
-    "",
-    status ? "   " + status : "",
-    "",
-    "   COMMAND: ",
-  ];
-}
-
+/// Two of these screens draw a prompt and nothing else, so they need no
+/// row count. The conference listing does: how many items fit on a page is
+/// the whole difference between 50 rows and 25.
 export function webScreen(input: string, status: string, m: Meter | null): string[] {
   return [
     "",
@@ -124,30 +71,49 @@ export function webScreen(input: string, status: string, m: Meter | null): strin
 
 export type Item = { title: string; url: string };
 
+export type Listing = { lines: string[]; hot: import("../touch").Hot[] };
+
 export function conferenceScreen(
   name: string,
   items: Item[],
   page: number,
   input: string,
   status: string,
-): string[] {
-  // 60 rows, not 25: a conference listing that showed 16 items on a
-  // screen with room for 40 is the 80x25 layout left behind.
-  const perPage = 40;
+  rows: number,
+  cols: number,
+): Listing {
+  // Nine lines of furniture wrap the list - a title, a rule, the key
+  // legend, the prompt and the blank rows between them - so the page size
+  // is whatever is left. It was a hardcoded 40, which was right for one
+  // mode and showed a fifth of a screen or overran it in the others.
+  const perPage = Math.max(1, rows - 9);
   const slice = items.slice(page * perPage, (page + 1) * perPage);
-  return [
-    "",
-    `   ${name}`,
-    "   " + "─".repeat(name.length),
-    "",
-    ...slice.map((it, i) =>
-      `   [${String(page * perPage + i + 1).padStart(2)}] ${it.title}`.slice(0, 128),
-    ),
+
+  const head = ["", `   ${name}`, "   " + "─".repeat(name.length), ""];
+  const body = slice.map((it, i) =>
+    `   [${String(page * perPage + i + 1).padStart(2)}] ${it.title}`.slice(0, cols),
+  );
+
+  // Tapping an item types its number and presses return, which is exactly
+  // what a caller does. The row is its index in the finished array, so it
+  // stays correct if the heading ever grows.
+  const hot = slice.map((_, i) => ({
+    row: head.length + i,
+    keys: [...String(page * perPage + i + 1), "Enter"],
+  }));
+
+  const legend = "   N) NEXT   P) PREV   Q) MAIN MENU   NUMBER TO READ";
+  const tail = [
     ...(slice.length === 0 ? ["   " + (status || "LOADING...")] : []),
     "",
-    "   N) NEXT   P) PREV   Q) MAIN MENU   NUMBER TO READ",
+    legend,
     "",
     `   ITEM: ${input}_`,
     status && slice.length ? "   " + status : "",
   ];
+
+  const lines = [...head, ...body, ...tail];
+  // The legend is a control row too, but only for the keys that are not
+  // item numbers.
+  return { lines, hot };
 }

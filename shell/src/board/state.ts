@@ -15,8 +15,17 @@ export function nextState(s: State, key: string): State {
   if (key === "Q" && s.screen !== "login") return { screen: "menu" };
 
   switch (s.screen) {
+    // The login screen offers three keys and, until now, honoured one.
+    //
+    // [ N ] and [ G ] have been drawn on it since the art landed and did
+    // nothing at all - a keyboard caller pressed N, got the same screen
+    // back, and had no way to tell a dead key from a missed keystroke.
+    // Making the rows tappable would have made that unmissable rather than
+    // merely wrong.
     case "login":
-      return key === "Enter" ? { screen: "menu" } : s;
+      if (key === "Enter" || key === "G") return { screen: "menu" };
+      if (key === "N") return { screen: "register" };
+      return s;
 
     case "menu": {
       if (key === "W") return { screen: "web" };

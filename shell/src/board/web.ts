@@ -3,10 +3,20 @@ import { gwFetch, type Meter } from "../gw";
 import { toRawNode } from "../parse";
 import type { Screen } from "../terminal";
 import { gatewayMessage, NO_DOCUMENT } from "./screens";
-import { COLS, ROWS } from "../terminal";
+/// How wide the content is laid out, and how many rows it gets once the
+/// header and footer furniture is drawn.
+///
+/// Passed in rather than read from a constant, because the board changes
+/// text mode to suit the screen: 132x50 leaves 40 rows for a document and
+/// 80x25 leaves 21, and the core lays out to whatever it is given.
+export type Fit = { cols: number; bodyRows: number };
 
-/// Rows left for content once the header and footer are drawn.
-const BODY_ROWS = ROWS - 10;
+/// The furniture costs 10 rows on a 50-row screen and 4 on a 25-row one -
+/// the wide screens carry a wordmark and two rules, the compact ones a
+/// single title line.
+export function fitFor(cols: number, rows: number): Fit {
+  return { cols, bodyRows: rows - (rows >= 50 ? 10 : 4) };
+}
 
 export type WebResult =
   | {
@@ -46,7 +56,7 @@ type Wasm = {
   ) => unknown;
 };
 
-export async function openUrl(url: string, wasm: Wasm): Promise<WebResult> {
+export async function openUrl(url: string, wasm: Wasm, fit: Fit): Promise<WebResult> {
   const got = await gwFetch(url);
   if (!got.ok) return { ok: false, message: gatewayMessage(got.reason) };
 
@@ -55,7 +65,7 @@ export async function openUrl(url: string, wasm: Wasm): Promise<WebResult> {
   // projecting them would be like running a photograph through a spell
   // checker.
   if (got.contentType === "text/x-ansi") {
-    const art = wasm.render_ansi_art(new Uint8Array(got.bytes), BODY_ROWS) as {
+    const art = wasm.render_ansi_art(new Uint8Array(got.bytes), fit.bodyRows) as {
       pages: Screen[];
       title: string;
       author: string;
@@ -82,7 +92,7 @@ export async function openUrl(url: string, wasm: Wasm): Promise<WebResult> {
     // Sixteen colours chosen for this picture, snapped to the VGA DAC.
     // The palette comes back with the screen because the cell values are
     // indices into it - see PaletteMode::Auto in the core.
-    const img = wasm.render_image(rgba, w, h, COLS, BODY_ROWS, false, 16, true, true, "art") as {
+    const img = wasm.render_image(rgba, w, h, fit.cols, fit.bodyRows, false, 16, true, true, "art") as {
       screen: Screen;
       palette: [number, number, number][];
     };
@@ -99,7 +109,7 @@ export async function openUrl(url: string, wasm: Wasm): Promise<WebResult> {
   }
 
   const html = new TextDecoder("utf-8").decode(got.bytes);
-  const result = wasm.render_document(toRawNode(html), COLS, BODY_ROWS) as {
+  const result = wasm.render_document(toRawNode(html), fit.cols, fit.bodyRows) as {
     title: string;
     pages: Screen[];
     empty_shell: boolean;
@@ -126,6 +136,7 @@ export async function fetchImage(
   src: string,
   base: string,
   wasm: Wasm,
+  fit: Fit,
 ): Promise<Screen | null> {
   let abs: string;
   try {
@@ -137,7 +148,7 @@ export async function fetchImage(
   if (!got.ok || !got.contentType.startsWith("image/")) return null;
   try {
     const { rgba, w, h } = await decodeToRgba(got.bytes);
-    const img = wasm.render_image(rgba, w, h, COLS, BODY_ROWS, false, 16, true, true, "art") as {
+    const img = wasm.render_image(rgba, w, h, fit.cols, fit.bodyRows, false, 16, true, true, "art") as {
       screen: Screen;
       palette: [number, number, number][];
     };

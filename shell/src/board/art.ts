@@ -40,30 +40,52 @@ const K = {
   BBLUE: "c", BMAGENTA: "d", BCYAN: "e", WHITE: "f",
 };
 
-export type Art = { lines: string[]; fg: string[]; bg: string[] };
-
-const W = 132;
-const H = 50;
+/// `hot` is the rows a pointer can press, and what pressing one sends.
+/// Reported rather than re-derived: menuArt already computes the row each
+/// entry lands on, and a second copy of that arithmetic in the tap handler
+/// is a copy that goes out of step.
+export type Art = {
+  lines: string[];
+  fg: string[];
+  bg: string[];
+  hot: import("../touch").Hot[];
+};
 
 /// A cell grid that emits the three parallel arrays render_art expects.
 class Canvas {
   private ch: string[][] = [];
   private fg: string[][] = [];
   private bg: string[][] = [];
+  /// Collected as entries are placed, so a row and its key are recorded by
+  /// the same call that draws it.
+  readonly hot: import("../touch").Hot[] = [];
+  readonly w: number;
+  readonly h: number;
 
-  constructor() {
-    for (let y = 0; y < H; y++) {
-      this.ch.push(new Array(W).fill(" "));
-      this.fg.push(new Array(W).fill(K.GREY));
-      this.bg.push(new Array(W).fill(K.BLACK));
+  // Written out rather than declared as constructor parameters: the build
+  // sets erasableSyntaxOnly, so a parameter property is a compile error.
+  constructor(w: number, h: number) {
+    this.w = w;
+    this.h = h;
+    for (let y = 0; y < h; y++) {
+      this.ch.push(new Array(w).fill(" "));
+      this.fg.push(new Array(w).fill(K.GREY));
+      this.bg.push(new Array(w).fill(K.BLACK));
     }
   }
 
+  /// Marks a row as pressable. Separate from put() because a control is
+  /// usually two calls - the key and its label - and only one row.
+  hits(row: number, ...keys: string[]) {
+    if (row < 0 || row >= this.h) return;
+    this.hot.push({ row, keys });
+  }
+
   put(x: number, y: number, s: string, fg = K.GREY, bg = K.BLACK) {
-    if (y < 0 || y >= H) return;
+    if (y < 0 || y >= this.h) return;
     for (let i = 0; i < s.length; i++) {
       const cx = x + i;
-      if (cx < 0 || cx >= W) continue;
+      if (cx < 0 || cx >= this.w) continue;
       this.ch[y][cx] = s[i];
       this.fg[y][cx] = fg;
       this.bg[y][cx] = bg;
@@ -71,7 +93,7 @@ class Canvas {
   }
 
   fill(x: number, y: number, w: number, h: number, s: string, fg = K.GREY, bg = K.BLACK) {
-    for (let yy = y; yy < Math.min(y + h, H); yy++) {
+    for (let yy = y; yy < Math.min(y + h, this.h); yy++) {
       this.put(x, yy, s.repeat(Math.max(0, w)), fg, bg);
     }
   }
@@ -90,6 +112,7 @@ class Canvas {
       lines: this.ch.map((r) => r.join("")),
       fg: this.fg.map((r) => r.join("")),
       bg: this.bg.map((r) => r.join("")),
+      hot: this.hot,
     };
   }
 }
@@ -115,6 +138,7 @@ const RAMP = [K.BBLUE, K.BBLUE, K.BCYAN, K.BCYAN, K.BCYAN, K.CYAN, K.CYAN];
 /// letter's shadow immediately before its own row lets the next row's
 /// glyphs cover it, which leaves a shadow visible only under the last row.
 function header(c: Canvas, kicker: string, right: string): number {
+  const W = c.w;
   c.put(0, 0, "═".repeat(W), K.BBLUE);
 
   const x = 4;
@@ -147,11 +171,24 @@ function header(c: Canvas, kicker: string, right: string): number {
 }
 
 function footer(c: Canvas, meterText: string, statusText: string) {
+  const W = c.w;
+  const H = c.h;
+  const text = meterText || statusText;
   c.put(0, H - 4, "─".repeat(W), K.DGREY);
-  c.put(2, H - 3, meterText || statusText, K.WHITE);
+  c.put(2, H - 3, text, K.WHITE);
   c.put(0, H - 1, "▄".repeat(W), K.DGREY);
-  // The sister project, cross-linked as a board would list its affiliates.
-  c.put(W - 30, H - 3, "sister board: modem.dbhq.uk", K.BMAGENTA);
+
+  // The sister project, cross-linked as a board would list its affiliates -
+  // but only when the row has room for both.
+  //
+  // It was placed at a fixed W-30. At 132 columns that is far clear of the
+  // meter; at 80 it lands on column 50, and the meter line is 52 characters
+  // long, so the caller's remaining time was overwritten mid-word:
+  // "REQUESTS LEsister board: modem.dbhq.uk". No length check can see this,
+  // because the row is still exactly 80 wide - the collision is inside it.
+  const sister = "sister board: modem.dbhq.uk";
+  const at = W - sister.length - 3;
+  if (at > text.length + 3) c.put(at, H - 3, sister, K.BMAGENTA);
 }
 
 /// A framed status panel. Real boards put exactly this in the corner: which
@@ -168,8 +205,10 @@ function panel(c: Canvas, x: number, y: number, title: string, rows: [string, st
   });
 }
 
-export function loginArt(meterText: string, statusText: string): Art {
-  const c = new Canvas();
+function wideLoginArt(meterText: string, statusText: string): Art {
+  const c = new Canvas(132, 50);
+  const W = c.w;
+  const H = c.h;
   const top = header(c, "PUBLIC ACCESS · EST. 2026", "NODE 1 OF 1");
 
   c.put(4, top, "THE WORLD WIDE WEB, AS IT SHOULD HAVE BEEN", K.WHITE);
@@ -177,10 +216,13 @@ export function loginArt(meterText: string, statusText: string): Art {
   c.put(4, top + 3, "chrome, then redrawn in CP437 on your own machine.", K.GREY);
   c.put(4, top + 4, "Images become ANSI art on the way past.", K.GREY);
 
+  c.hits(top + 7, "Enter");
   c.put(4, top + 7, "[ ENTER ]", K.BYELLOW);
   c.put(16, top + 7, "LOG ON", K.WHITE);
+  c.hits(top + 9, "N");
   c.put(4, top + 9, "[ N ]", K.BYELLOW);
   c.put(16, top + 9, "New user application", K.GREY);
+  c.hits(top + 11, "G");
   c.put(4, top + 11, "[ G ]", K.BYELLOW);
   c.put(16, top + 11, "Guest - browse the curated list", K.GREY);
 
@@ -225,14 +267,16 @@ export function loginArt(meterText: string, statusText: string): Art {
   return c.art();
 }
 
-export function menuArt(
+function wideMenuArt(
   who: { handle: string; sl: number; flags: string },
   meterText: string,
   statusText: string,
   input: string,
 ): Art {
-  const c = new Canvas();
-  const tier = who.sl >= 100 ? "SYSOP" : who.sl >= 20 ? "MEMBER" : who.sl <= 0 ? "TWIT" : "GUEST";
+  const c = new Canvas(132, 50);
+  const W = c.w;
+  const H = c.h;
+  const tier = tierOf(who.sl);
   const top = header(c, "MAIN MENU", `${who.handle}  ·  ${tier}  ·  SL ${who.sl}`);
 
   // Entries come from the level model, so what is shown and what is
@@ -252,6 +296,7 @@ export function menuArt(
   c.put(4, top, "╔═ CONFERENCES ═╗", K.CYAN);
   conferences.forEach((e, i) => {
     const y = top + 2 + i;
+    c.hits(y, e.key);
     c.put(6, y, e.key, K.BYELLOW);
     c.put(9, y, e.label, K.GREY);
     if (e.hint) c.put(HINT_X, y, hint(e.hint), K.DGREY);
@@ -260,6 +305,7 @@ export function menuArt(
   let y = top + 3 + conferences.length;
   if (gateway) {
     c.put(4, y, "╔═ THE GATEWAY ═╗", K.CYAN);
+    c.hits(y + 2, "W");
     c.put(6, y + 2, "W", K.BYELLOW);
     c.put(9, y + 2, gateway.label, K.BMAGENTA);
     if (gateway.hint) c.put(HINT_X, y + 2, hint(gateway.hint), K.DGREY);
@@ -268,6 +314,7 @@ export function menuArt(
 
   c.put(4, y, "╔═ COMMANDS ═╗", K.CYAN);
   commands.forEach((e, i) => {
+    c.hits(y + 2 + i, e.key);
     c.put(6, y + 2 + i, e.key, K.BYELLOW);
     c.put(9, y + 2 + i, e.label, K.GREY);
   });
@@ -309,4 +356,183 @@ export function menuArt(
   c.put(13, H - 6, input + "█", K.BYELLOW);
   footer(c, meterText, statusText);
   return c.art();
+}
+
+function tierOf(sl: number): string {
+  return sl >= 100 ? "SYSOP" : sl >= 20 ? "MEMBER" : sl <= 0 ? "TWIT" : "GUEST";
+}
+
+/// The compact header: three rows against the wide one's fourteen.
+///
+/// At 25 rows the wordmark cannot be both present and affordable on the
+/// menu, so only the login screen draws it. Everything else gets a title
+/// bar, which is what a board with 25 lines to spend actually did.
+function narrowHeader(c: Canvas, left: string, right: string): number {
+  const W = c.w;
+  c.put(0, 0, "═".repeat(W), K.BBLUE);
+  c.put(2, 1, left, K.BCYAN);
+  if (right) c.put(Math.max(0, W - right.length - 2), 1, right, K.DGREY);
+  c.put(0, 2, "─".repeat(W), K.DGREY);
+  return 4;
+}
+
+function narrowLoginArt(meterText: string, statusText: string): Art {
+  const c = new Canvas(80, 25);
+  const W = c.w;
+  const H = c.h;
+
+  c.put(0, 0, "═".repeat(W), K.BBLUE);
+
+  // The wordmark is 46 wide and survives the move to 80 columns intact,
+  // which is the whole reason the login screen keeps it and the menu does
+  // not - it is the board's face and it costs 7 of the 25 rows.
+  const x = 2;
+  const y = 1;
+  for (let r = 0; r < WORDMARK.length; r++) {
+    for (let i = 0; i < WORDMARK[r].length; i++) {
+      if (WORDMARK[r][i] !== " ") c.put(x + i + 1, y + r + 1, "▒", K.DGREY);
+    }
+  }
+  for (let r = 0; r < WORDMARK.length; r++) {
+    for (let i = 0; i < WORDMARK[r].length; i++) {
+      const g = WORDMARK[r][i];
+      if (g !== " ") c.put(x + i, y + r, g, RAMP[r]);
+    }
+  }
+
+  // Unspaced, unlike the wide header. "B U L L E T I N   B O A R D   S Y S
+  // T E M" is 41 columns and there are only 28 to the right of the
+  // wordmark here.
+  c.put(52, y + 1, "BULLETIN BOARD SYSTEM", K.BCYAN);
+  c.put(52, y + 3, "the world wide web,", K.WHITE);
+  c.put(52, y + 4, "as a board", K.WHITE);
+  c.put(52, y + 6, "PUBLIC ACCESS", K.BMAGENTA);
+
+  c.put(0, 9, "═".repeat(W), K.BBLUE);
+  c.put(2, 10, "bbs.dbhq.uk", K.BCYAN);
+  c.put(W - 13, 10, "NODE 1 OF 1", K.DGREY);
+  c.put(0, 11, "─".repeat(W), K.DGREY);
+
+  c.hits(13, "Enter");
+  c.put(4, 13, "[ ENTER ]", K.BYELLOW);
+  c.put(16, 13, "LOG ON", K.WHITE);
+  c.hits(14, "N");
+  c.put(4, 14, "[ N ]", K.BYELLOW);
+  c.put(16, 14, "New user application", K.GREY);
+  c.hits(15, "G");
+  c.put(4, 15, "[ G ]", K.BYELLOW);
+  c.put(16, 15, "Guest - browse the curated list", K.GREY);
+
+  c.put(4, 17, "Every page is stripped of script and tracking, then", K.GREY);
+  c.put(4, 18, "redrawn in CP437 on your own machine.", K.GREY);
+
+  c.put(4, H - 5, "1992 HARDWARE RULES / 2026 OUTSIDE", K.DGREY);
+  footer(c, meterText, statusText);
+  return c.art();
+}
+
+function narrowMenuArt(
+  who: { handle: string; sl: number; flags: string },
+  meterText: string,
+  statusText: string,
+  input: string,
+): Art {
+  const c = new Canvas(80, 25);
+  const H = c.h;
+  const tier = tierOf(who.sl);
+  let y = narrowHeader(c, "MAIN MENU", `${who.handle} · ${tier} · SL ${who.sl}`);
+
+  const entries = menuEntries(who.sl, who.flags);
+  const conferences = entries.filter((e) => /^[0-9]$/.test(e.key));
+  const commands = entries.filter((e) => !/^[0-9]$/.test(e.key) && e.key !== "W");
+  const gateway = entries.find((e) => e.key === "W");
+
+  // The last row a list may use. Below it are the command prompt and the
+  // footer, and a list that ran into them would draw over the input line -
+  // the one row on this screen that has to be legible.
+  const LAST = H - 7;
+
+  // Laid out by a running cursor rather than absolute rows, because the
+  // entries come from the level model and a sysop sees more of them than a
+  // guest. The wide screen can afford to reserve space for the maximum;
+  // at 25 rows it has to pack.
+  const section = (title: string, items: { key: string; label: string }[]) => {
+    if (!items.length || y > LAST) return;
+    c.put(2, y, title, K.CYAN);
+    y += 1;
+    for (const e of items) {
+      if (y > LAST) return;
+      c.hits(y, e.key);
+      c.put(4, y, e.key, K.BYELLOW);
+      c.put(7, y, e.label.slice(0, 70), e.key === "W" ? K.BMAGENTA : K.GREY);
+      y += 1;
+    }
+    y += 1;
+  };
+
+  section("╔═ CONFERENCES ═╗", conferences);
+  if (gateway) section("╔═ THE GATEWAY ═╗", [gateway]);
+  section("╔═ COMMANDS ═╗", commands);
+
+  c.put(2, H - 6, "COMMAND:", K.WHITE);
+  c.put(11, H - 6, input + "█", K.BYELLOW);
+  footer(c, meterText, statusText);
+  return c.art();
+}
+
+/// PORTRAIT, WITH A WAY OUT.
+///
+/// A phone held upright gives the board about 4.9 CSS pixels per character,
+/// which is legible only in the sense that the glyphs are technically
+/// present. Landscape roughly doubles it.
+///
+/// The dismiss key is not a courtesy. Orientation lock is common, and a
+/// tablet in a case may never report landscape at all; a hard block would
+/// simply lose those readers with no way for them to disagree.
+export function rotateArt(mode: { cols: number; rows: number }): Art {
+  const c = new Canvas(mode.cols, mode.rows);
+  const W = c.w;
+  const H = c.h;
+  const mid = Math.floor(H / 2) - 3;
+  const centre = (s: string) => Math.max(0, Math.floor((W - s.length) / 2));
+
+  c.put(0, 0, "═".repeat(W), K.BBLUE);
+  c.put(2, 1, "bbs.dbhq.uk", K.BCYAN);
+  c.put(0, 2, "─".repeat(W), K.DGREY);
+
+  const title = "TURN YOUR HANDSET SIDEWAYS";
+  c.put(centre(title), mid, title, K.BCYAN);
+
+  const body = "This board is 80 columns wide. It was always going to want";
+  const body2 = "a landscape screen.";
+  c.put(centre(body), mid + 2, body, K.GREY);
+  c.put(centre(body2), mid + 3, body2, K.GREY);
+
+  const key = "[ C ]  CARRY ON ANYWAY";
+  c.hits(mid + 5, "C");
+  c.put(centre(key), mid + 5, key, K.BYELLOW);
+
+  c.put(0, H - 1, "▄".repeat(W), K.DGREY);
+  return c.art();
+}
+
+/// The board's screens, in whichever mode the terminal is currently in.
+///
+/// Two compositions rather than one that stretches. 132x50 has 6,600 cells
+/// and 80x25 has 2,000, and a layout that reads as generous at one is
+/// either cramped or half empty at the other.
+export function loginArt(meterText: string, statusText: string, narrow: boolean): Art {
+  return narrow ? narrowLoginArt(meterText, statusText) : wideLoginArt(meterText, statusText);
+}
+
+export function menuArt(
+  who: { handle: string; sl: number; flags: string },
+  meterText: string,
+  statusText: string,
+  input: string,
+  narrow: boolean,
+): Art {
+  return narrow
+    ? narrowMenuArt(who, meterText, statusText, input)
+    : wideMenuArt(who, meterText, statusText, input);
 }
