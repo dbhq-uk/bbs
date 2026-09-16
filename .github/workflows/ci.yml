@@ -69,13 +69,19 @@ jobs:
       # The Worker suite - the gate, the relay, sessions and routing. The
       # comment above has always claimed CI covers these; until 9 Sep 2026 it
       # did not actually run them, so a Worker could go out red.
-      - run: npm install
+      #
+      # npm ci, not npm install: it installs exactly what the lockfile
+      # pins and fails if the lockfile and package.json disagree, which is
+      # the whole point of committing one. `npm install` would silently
+      # resolve a newer transitive dependency and the run would no longer
+      # be the run anyone else gets.
+      - run: npm ci
       - run: npm test
 
       - name: Build the shell and run its tests
         run: |
           cd shell
-          npm install
+          npm ci
           npm run build
           npx vitest run
 

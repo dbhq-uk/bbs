@@ -65,13 +65,13 @@ jobs:
         run: |
           set -euo pipefail
           cd shell
-          npm install
+          npm ci
           npm run build
 
       # wrangler itself, for the deploy. Separate from the shell's install
       # because they are separate package trees.
       - name: Install the Worker toolchain
-        run: npm install
+        run: npm ci
 
       # No --dry-run guard here; ci.yml runs one on every push and pull
       # request, so a config or bundling error has already been caught by the
