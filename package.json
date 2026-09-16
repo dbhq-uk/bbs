@@ -11,6 +11,6 @@
     "tsx": "^4.23.13",
     "typescript": "^5",
     "vitest": "^2",
-    "wrangler": "^4.130.0"
+    "wrangler": "^4.132.0"
   }
 }
