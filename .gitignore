@@ -8,7 +8,6 @@ dist/
 corpus/pages/
 test-results/
 playwright-report/
-package-lock.json
 .dev.vars
 
 # Python bytecode from the generators under design/ and the deploy's own
