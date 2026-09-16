@@ -40,4 +40,3 @@
 - modem, a real Bell 103 dial-up handshake you can hear: https://modem.dbhq.uk/
 - heliograph, debugging a machine you cannot log into: https://heliograph.dbhq.uk/
 - Skills, agent skills for Claude Code and Codex: https://skills.dbhq.uk/
-- All of them, on this site: https://bbs.dbhq.uk/projects/

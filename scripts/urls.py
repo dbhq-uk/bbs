@@ -14,7 +14,9 @@ Two deliberate exclusions:
             gives every one of them a new name, so a stale copy is not
             reachable and purging them wastes the quota.
   _headers  A build directive Cloudflare consumes at deploy time. It is not
-            served, so requesting it proves nothing and purging it is a no-op.
+  _redirects  served, so requesting one proves nothing and purging it is a
+            no-op. verify.sh would fail the deploy demanding a 200 for a file
+            that is never served.
 
 A directory index is listed twice on purpose - as /about/index.html and as
 /about/ - because those are separate cache entries at the edge and only the
@@ -33,7 +35,7 @@ def urls(dist: str, site: str) -> list[str]:
     for root, dirs, files in os.walk(dist):
         dirs[:] = [d for d in dirs if d != "assets"]
         for name in files:
-            if name == "_headers":
+            if name in ("_headers", "_redirects"):
                 continue
             rel = os.path.relpath(os.path.join(root, name), dist)
             rel = rel.replace(os.sep, "/")

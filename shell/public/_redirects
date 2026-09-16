@@ -1,0 +1,5 @@
+# /projects/ existed from 15 to 16 Sep 2026 and was submitted in the sitemap,
+# so Search Console knows the URL. A 301 retires it without leaving a 404 in
+# the index; DBHQ is still one click away in every footer byline.
+/projects/ / 301
+/projects /  301

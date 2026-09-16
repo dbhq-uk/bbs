@@ -35,9 +35,8 @@ footer { border-top: 1px solid var(--line); flex: 0 0 auto; }
 
    It used to hold an "Also from DBHQ" list - four sibling names with a
    clause each, in the row nobody reads, repeated on every page. On the
-   board page it also cost the board screen height, which is the one thing
-   that page cannot spare. The same four live at /projects/ now, with room
-   to say why each is worth a click, and the nav sends people there. */
+   board page it also cost screen height, which is the one thing that page
+   cannot spare. DBHQ is still one click away in the byline. */
 .byline { color: var(--dim); }
 .byline a { color: var(--cyan); text-decoration: none; }
 .byline a:hover { text-decoration: underline; }
@@ -75,7 +74,7 @@ footer { border-top: 1px solid var(--line); flex: 0 0 auto; }
    On a landscape phone the two bars cost a fifth of the window, and the
    board is scaled to whatever is left - so every row of chrome comes
    straight off the size of the text. The navigation stays: it is the only
-   route to /about/, the ASCII tool, /projects/ and the source. */
+   route to /about/, the ASCII tool and the source. */
 @media (max-height: 560px), (max-width: 700px) {
   :root { --bar: 26px; }
   .bar { gap: .75rem; padding: 0 .6rem; font-size: .72rem; }
@@ -97,13 +96,6 @@ main.prose hr { border: 0; border-top: 1px solid var(--line); margin: 3rem 0 1.5
 main.prose .lede { color: #ddd; }
 main.prose ul { padding-left: 1.2rem; }
 main.prose li { margin: .4rem 0; }
-
-/* The siblings on /projects/. A name and one sentence on why it is worth a
-   click, which is what a bare name in a footer list never gave. */
-.siblings { list-style: none; padding: 0; margin: 1.2rem 0 0; }
-.siblings li { margin: 0 0 1.4rem; }
-.siblings > li > a { font-size: 1.05rem; letter-spacing: .02em; }
-.siblings p { margin: .2rem 0 0; color: var(--dim); }
 
 /* The consent prompt is styled as a board panel rather than a modern
    cookie bar, but it stays a native <dialog>: showModal() gives focus
