@@ -46,8 +46,9 @@ jobs:
 
       # `stable`, matching ci.yml. A pinned version here would mean the
       # toolchain that gates a change is not the toolchain that ships it.
-      - uses: dtolnay/rust-toolchain@{"message":"Not Found","documentation_url":"https://docs.github.com/rest/git/refs#get-a-reference","status":"404"} # stable
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
+          toolchain: stable
           targets: wasm32-unknown-unknown
 
       - uses: jetli/wasm-pack-action@0d096b08b4e5a7de8c28de67e11e945404e9eefa # v0.4.0
