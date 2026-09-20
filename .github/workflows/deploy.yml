@@ -42,7 +42,12 @@ jobs:
     steps:
       # Actions pinned to commit SHAs, not tags - a hijacked tag would run
       # with our Cloudflare credentials in scope.
+      # fetch-depth: 0 because the build generates the sitemap's <lastmod>
+      # from git history (shell/scripts/sitemap.mjs, 20 Sep 2026) and throws
+      # on a shallow clone rather than publishing one date for every page.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       # `stable`, matching ci.yml. A pinned version here would mean the
       # toolchain that gates a change is not the toolchain that ships it.

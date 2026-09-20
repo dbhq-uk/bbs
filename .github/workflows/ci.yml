@@ -51,7 +51,12 @@ jobs:
       github.event_name == 'push' ||
       github.event.pull_request.head.repo.full_name != github.repository
     steps:
+      # fetch-depth: 0 because the build generates the sitemap's <lastmod>
+      # from git history (shell/scripts/sitemap.mjs, 20 Sep 2026) and throws
+      # on a shallow clone rather than publishing one date for every page.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           toolchain: stable
