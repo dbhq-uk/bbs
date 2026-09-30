@@ -189,21 +189,23 @@
       </span>
       <nav>
         <a href="https://github.com/dbhq-uk/bbs">Source on GitHub</a>
+        <button class="linklike" type="button" data-analytics-settings hidden>Cookie settings</button>
       </nav>
     </footer>
 
-    <dialog class="consent" data-consent aria-label="Cookie consent">
-      <h2>ANALYTICS</h2>
-      <p>
-        The sysop would like to know how many callers there are, using Google
-        Analytics. Cookies are only set if you accept, and the board works
-        exactly the same either way.
+    <aside class="analytics-notice" data-analytics-notice aria-label="Analytics notice" tabindex="-1" hidden>
+      <p class="analytics-notice-title">ANALYTICS</p>
+      <p class="analytics-notice-text">
+        DBHQ counts visits with Google Analytics to see which pages are useful.
+        No advertising, and nothing shared with advertisers.
+        <a href="https://dbhq.uk/privacy/#analytics">How it works</a>
       </p>
-      <div class="consent-actions">
-        <button type="button" data-consent-decline>Decline</button>
-        <button type="button" data-consent-accept autofocus>Accept</button>
+      <p class="analytics-notice-status" data-analytics-status hidden></p>
+      <div class="analytics-notice-actions">
+        <button type="button" data-analytics-off>Opt out</button>
+        <button type="button" data-analytics-on>OK</button>
       </div>
-    </dialog>
+    </aside>
 
     <script src="/consent.js"></script>
   </body>
