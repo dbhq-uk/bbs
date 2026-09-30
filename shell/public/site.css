@@ -97,21 +97,45 @@ main.prose .lede { color: #ddd; }
 main.prose ul { padding-left: 1.2rem; }
 main.prose li { margin: .4rem 0; }
 
-/* The consent prompt is styled as a board panel rather than a modern
-   cookie bar, but it stays a native <dialog>: showModal() gives focus
-   move-in, a focus trap, Escape and focus return for free. */
-.consent {
-  max-width: 52ch; padding: 1.2rem 1.4rem; color: #aaa;
-  background: #000; border: 1px solid #55ffff;
-  font: 14px/1.6 ui-monospace, Menlo, Consolas, monospace;
+/* The analytics notice, drawn as a board panel rather than a modern cookie
+   bar. NON-MODAL: no <dialog>, no backdrop, no focus trap, because there is
+   nothing to agree to before reading and the board must stay usable under
+   it. It sits above the footer so "Cookie settings" is never covered.
+
+   "Opt out" and "OK" share one rule and nothing else, so objecting is
+   exactly as prominent as carrying on. Do not give either its own colour. */
+.analytics-notice {
+  position: fixed; z-index: 60; right: 1rem; bottom: calc(var(--bar) + .75rem);
+  width: calc(100% - 2rem); max-width: 52ch; box-sizing: border-box;
+  padding: 1rem 1.2rem; color: #aaa; background: #000;
+  border: 1px solid var(--cyan);
+  font: 14px/1.6 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  display: flex; flex-direction: column; gap: .75rem;
 }
-.consent[open] { display: flex; flex-direction: column; gap: 1rem; }
-.consent::backdrop { background: rgba(0, 0, 0, .72); }
-.consent h2 { margin: 0; color: #55ffff; font-size: .95rem; letter-spacing: .05em; }
-.consent p { margin: 0; }
-.consent-actions { display: flex; gap: .75rem; justify-content: flex-end; }
-.consent button {
-  font: inherit; padding: .45em 1.2em; cursor: pointer;
-  background: #000; color: #aaa; border: 1px solid #555;
+.analytics-notice[hidden] { display: none; }
+.analytics-notice:focus { outline: none; }
+.analytics-notice:focus-visible { outline: 1px dashed #ffff55; outline-offset: 3px; }
+.analytics-notice p { margin: 0; }
+.analytics-notice-title { color: var(--cyan); font-size: .95rem; letter-spacing: .05em; }
+.analytics-notice-text a { color: var(--cyan); white-space: nowrap; }
+.analytics-notice-status { color: #fff; }
+.analytics-notice-actions { display: flex; gap: .75rem; justify-content: flex-end; }
+.analytics-notice-actions button {
+  font: inherit; min-height: 44px; padding: .45em 1.2em; cursor: pointer;
+  color: var(--cyan); background: #000; border: 1px solid var(--cyan);
 }
-.consent button[data-consent-accept] { color: #000; background: #ffff55; border-color: #ffff55; }
+.analytics-notice-actions button:hover,
+.analytics-notice-actions button:focus-visible { color: #000; background: var(--cyan); outline: none; }
+@media (max-width: 700px) {
+  .analytics-notice { right: .6rem; width: calc(100% - 1.2rem); padding: .85rem 1rem; font-size: 13px; }
+  .analytics-notice-actions { display: grid; grid-template-columns: 1fr 1fr; }
+}
+
+/* "Cookie settings" in the footer reopens the notice. A button, because it
+   does something rather than going somewhere, drawn like the links beside
+   it. Hidden until consent.js runs. */
+.bar .linklike {
+  font: inherit; color: var(--cyan); background: none; border: 0; padding: 0;
+  cursor: pointer;
+}
+.bar .linklike:hover { text-decoration: underline; }
